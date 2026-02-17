@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # import rclpy
 # import DR_init
 # import time
@@ -86,11 +87,16 @@
 # if __name__ == "__main__":
 #     main()
 
+=======
+>>>>>>> 753f14b ([Feat] web ui 및 웹으로 로봇팔 제어 기능)
 import rclpy
 import DR_init
 import time
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 753f14b ([Feat] web ui 및 웹으로 로봇팔 제어 기능)
 # 로봇 설정 상수 (필요에 따라 수정)
 ROBOT_ID = "dsr01"
 ROBOT_MODEL = "m0609"
@@ -108,7 +114,10 @@ DR_init.__dsr__model = ROBOT_MODEL
 
 def initialize_robot():
     """로봇의 Tool과 TCP를 설정"""
+<<<<<<< HEAD
 
+=======
+>>>>>>> 753f14b ([Feat] web ui 및 웹으로 로봇팔 제어 기능)
     from DSR_ROBOT2 import set_tool, set_tcp,get_tool,get_tcp,ROBOT_MODE_MANUAL,ROBOT_MODE_AUTONOMOUS  # 필요한 기능만 임포트
     from DSR_ROBOT2 import get_robot_mode,set_robot_mode
 
@@ -136,6 +145,7 @@ def initialize_robot():
 def perform_task():
     """로봇이 수행할 작업"""
     print("Performing task...")
+<<<<<<< HEAD
     from DSR_ROBOT2 import DR_AXIS_Z, DR_BASE, DR_MV_MOD_REL, DR_TOOL
     from DSR_ROBOT2 import posj,posx,movej,movel,set_ref_coord,wait,move_spiral  # 필요한 기능만 임포트
 
@@ -168,6 +178,22 @@ def perform_task():
         # move_spiral(rev=5,pos=D1,mod=DR_MV_MOD_REL,v=40,a=40,axis=DR_AXIS_Z,ref=DR_BASE)
         # move_spiral(rev=5,pos=D2,mod=DR_MV_MOD_REL,v=40,a=40,axis=DR_AXIS_Z,ref=DR_BASE)
 
+=======
+    from DSR_ROBOT2 import posx,movej,movel,set_ref_coord,wait  # 필요한 기능만 임포트
+
+    # 초기 위치 및 목표 위치 설정
+    JReady = [0, 0, 90, 0, 90, 0]
+    pos1 = posx([500, 80, 200, 150, 179, 150])
+
+    # 반복 동작 수행
+    while True:       
+        # 이동 명령 실행
+        print("movej")
+        movej(JReady, vel=VELOCITY, acc=ACC)
+        print("movel")
+        movel(pos1, vel=VELOCITY, acc=ACC)
+    
+>>>>>>> 753f14b ([Feat] web ui 및 웹으로 로봇팔 제어 기능)
 
 def main(args=None):
     """메인 함수: ROS2 노드 초기화 및 동작 수행"""
