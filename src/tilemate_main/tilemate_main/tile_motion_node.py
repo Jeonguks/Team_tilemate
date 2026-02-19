@@ -124,10 +124,7 @@ class _GripperClient:
     def __init__(self, node: Node):
         self._node = node
         self._pub = node.create_publisher(Float64, "/gripper/width_m", 10)
-        # ✅ completed/jobs (픽앤플레이스 1회 완료 카운트)
-        self.pub_completed_jobs = self.create_publisher(Int32, "/completed/jobs", 10)
-        self._completed_jobs = 0
-        self._publish_completed_jobs()  # 필요하면 초기값 0도 한 번 쏴줌
+
 
     def set_width(self, width_m: float):
         msg = Float64()
@@ -157,14 +154,21 @@ class TileMotionNode(Node):
 
         self.pub_status = self.create_publisher(String, "/tile/status", 10)
 
+        # ✅ completed/jobs (픽앤플레이스 run_once 완료 누적)
+        self.pub_completed_jobs = self.create_publisher(Int32, "/completed/jobs", 10)
+        self._completed_jobs = 0
+        self._publish_completed_jobs()
+
         self.create_subscription(Int32, "/tile/run_once", self._cb_run_once, 10)
         self.create_subscription(Bool,  "/task/pause", self._cb_pause, 10)
         self.create_subscription(Bool,  "/task/stop_soft", self._cb_stop_soft, 10)
+
 
         self.gripper = _GripperClient(self)
 
         self._initialize_robot()
         self.get_logger().info("TileMotionNode ready: sub /tile/run_once")
+
 
     def _initialize_robot(self):
         from DSR_ROBOT2 import set_tool, set_tcp, ROBOT_MODE_MANUAL, ROBOT_MODE_AUTONOMOUS, set_robot_mode
@@ -174,6 +178,12 @@ class TileMotionNode(Node):
         set_tcp(self.cfg.tcp)
         set_robot_mode(ROBOT_MODE_AUTONOMOUS)
         time.sleep(1.0)
+
+    def _publish_completed_jobs(self):
+        m = Int32()
+        m.data = int(self._completed_jobs)
+        self.pub_completed_jobs.publish(m)
+        self.get_logger().info(f"[TILE] /completed/jobs={m.data}")
 
     def _cb_run_once(self, msg: Int32):
         if self._running:
@@ -220,12 +230,11 @@ class TileMotionNode(Node):
 
             self.get_logger().info(f"[TILE] run_once start token={tok}")
             self._perform_task_2x2()
-            # ✅ 성공적으로 1회 끝났을 때만 증가
+            # ✅ 성공 완료 시에만 1 증가
             if not self._stop_soft:
                 self._completed_jobs += 1
                 self._publish_completed_jobs()
-                
-            self.get_logger().info(f"[TILE] run_once done token={tok}")
+
             self._publish_status(f"done:{tok}")
 
         except Exception as e:
