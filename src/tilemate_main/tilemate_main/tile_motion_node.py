@@ -124,6 +124,10 @@ class _GripperClient:
     def __init__(self, node: Node):
         self._node = node
         self._pub = node.create_publisher(Float64, "/gripper/width_m", 10)
+        # ✅ completed/jobs (픽앤플레이스 1회 완료 카운트)
+        self.pub_completed_jobs = self.create_publisher(Int32, "/completed/jobs", 10)
+        self._completed_jobs = 0
+        self._publish_completed_jobs()  # 필요하면 초기값 0도 한 번 쏴줌
 
     def set_width(self, width_m: float):
         msg = Float64()
@@ -216,6 +220,11 @@ class TileMotionNode(Node):
 
             self.get_logger().info(f"[TILE] run_once start token={tok}")
             self._perform_task_2x2()
+            # ✅ 성공적으로 1회 끝났을 때만 증가
+            if not self._stop_soft:
+                self._completed_jobs += 1
+                self._publish_completed_jobs()
+                
             self.get_logger().info(f"[TILE] run_once done token={tok}")
             self._publish_status(f"done:{tok}")
 
