@@ -1,4 +1,4 @@
-# cobot1/robot_config.py
+# tilemate_main/robot_config.py
 from dataclasses import dataclass
 
 @dataclass

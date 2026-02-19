@@ -1,4 +1,4 @@
-# cobot1/scraper_task_lib.py
+# tilemate_main/scraper_task_lib.py
 import time
 
 class ScraperTask:

@@ -5,7 +5,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from dsr_msgs2.srv import MoveStop
 
-from cobot1.robot_config import RobotConfig
+from tilemate_main.robot_config import RobotConfig
 
 class CommandNode(Node):
     """

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-# cobot1/motion_node.py
+# tilemate_main/motion_node.py
 import time
 import threading
+import traceback
+import sys
 
 import rclpy
 from rclpy.node import Node
@@ -9,8 +11,9 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, Int32, Float64
 
 import DR_init
-from cobot1.robot_config import RobotConfig
-from cobot1.scraper_task_lib import ScraperTask
+from tilemate_main.robot_config import RobotConfig
+from tilemate_main.scraper_task_lib import ScraperTask
+
 
 class _GripperClient:
     """motion_node에서 gripper_node로 폭 명령을 보내기 위한 thin client."""
@@ -24,6 +27,7 @@ class _GripperClient:
         self._pub.publish(msg)
         self._node.get_logger().info(f"[GRIPPER->CMD] width_m={msg.data:.4f}")
 
+
 class MotionNode(Node):
     """
     - DSR_ROBOT2 전용 노드
@@ -33,14 +37,35 @@ class MotionNode(Node):
     """
     def __init__(self, cfg: RobotConfig):
         super().__init__("motion_node", namespace=cfg.robot_id)
-
-        # DR_init 연결 (DSR_ROBOT2는 이 노드로만 동작)
-        DR_init.__dsr__id = cfg.robot_id
-        DR_init.__dsr__model = cfg.robot_model
-        DR_init.__dsr__node = self
-
         self.cfg = cfg
 
+        # -------------------------
+        # DR_init 연결 (DSR_ROBOT2는 이 노드로만 동작)
+        # -------------------------
+        DR_init.g_node = self
+        DR_init.ROBOT_ID = cfg.robot_id
+        DR_init.ROBOT_MODEL = cfg.robot_model
+
+        # 디버그: 실제로 어떤 DR_init을 보고 있는지(경로 확인)
+        self.get_logger().info(f"[DBG] DR_init file: {getattr(DR_init, '__file__', 'UNKNOWN')}")
+        self.get_logger().info(f"[DBG] DR_init id/model/node: {DR_init.__dsr__id}/{DR_init.__dsr__model}/{type(DR_init.__dsr__node)}")
+
+        # -------------------------
+        # DSR_ROBOT2 import (여기서 실패하면 즉시 종료)
+        # -------------------------
+        try:
+            import DSR_ROBOT2  # noqa: F401
+            self.get_logger().info("[DBG] DSR_ROBOT2 import OK")
+        except Exception as e:
+            self.get_logger().error("❌ DSR_ROBOT2 import failed. This usually means DR_init.__dsr__node is not set correctly *at import time*.")
+            self.get_logger().error(f"Exception: {e}")
+            self.get_logger().error(traceback.format_exc())
+            # launch에서 원인을 명확히 보이게 바로 종료
+            raise
+
+        # -------------------------
+        # 상태 플래그 / 동기화
+        # -------------------------
         self._pause = False
         self._stop_soft = False
 
@@ -52,14 +77,23 @@ class MotionNode(Node):
         self.create_subscription(Bool, "/task/pause", self._cb_pause, 10)
         self.create_subscription(Bool, "/task/stop_soft", self._cb_stop_soft, 10)
 
+        # gripper client & task
         self.gripper = _GripperClient(self)
-        self.task = ScraperTask(self.gripper, cfg)
+
+        # ✅ ScraperTask 생성자 시그니처에 맞춰 호출해야 함
+        # - 예전 버전: ScraperTask(node, gripper, cfg)
+        # - 지금 버전: ScraperTask(gripper, cfg)  (네가 올린 코드 기준)
+        try:
+            self.task = ScraperTask(self.gripper, cfg)
+        except TypeError:
+            # 혹시 아직 예전 시그니처라면 자동 fallback
+            self.task = ScraperTask(self, self.gripper, cfg)
 
         # 워커 스레드
         self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker.start()
 
-        # 초기화는 노드 시작 시 1회
+        # 초기화는 노드 시작 시 1회 (DSR_ROBOT2 import 이후!)
         self.task.initialize_robot()
         self.get_logger().info("MotionNode ready: wait /task/run_once")
 
@@ -106,16 +140,31 @@ class MotionNode(Node):
                 self.get_logger().info("[TASK] run_once done")
             except Exception as e:
                 self.get_logger().error(f"[TASK] run_once exception: {e}")
+                self.get_logger().error(traceback.format_exc())
+
 
 def main(args=None):
     rclpy.init(args=args)
-    cfg = RobotConfig()
-    node = MotionNode(cfg)
+    node = None
     try:
+        cfg = RobotConfig()
+        node = MotionNode(cfg)
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        if node is not None:
+            try:
+                node.destroy_node()
+            except Exception:
+                pass
+        # ✅ launch가 이미 shutdown 호출할 수 있어서 안전 처리
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
+
 
 if __name__ == "__main__":
     main()
