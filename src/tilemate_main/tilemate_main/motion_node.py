@@ -8,20 +8,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Int32, Float64
 
-# ✅ 핵심: 노드 생성 전에 DR_init 세팅 후 DSR_ROBOT2 import
 import DR_init
-
-# 하드코딩으로 먼저 테스트
-setattr(DR_init, '__dsr__id', 'dsr01')
-setattr(DR_init, '__dsr__model', 'm0609')
-
-# 임시 노드를 만들어서 DSR_ROBOT2 import용으로 사용
-rclpy.init()
-_tmp_node = rclpy.create_node('motion_node', namespace='dsr01')
-setattr(DR_init, '__dsr__node', _tmp_node)
-
-import DSR_ROBOT2  # 이 시점에 g_node가 세팅된 상태
-
 from tilemate_main.robot_config import RobotConfig
 from tilemate_main.scraper_task_lib import ScraperTask
 
@@ -38,9 +25,12 @@ class _GripperClient:
 
 
 class MotionNode(Node):
-    def __init__(self, cfg: RobotConfig):
+    def __init__(self, cfg: RobotConfig, boot_node=None):
+        # DR_init 세팅은 main()에서 이미 완료됨
         super().__init__("motion_node", namespace=cfg.robot_id)
         self.cfg = cfg
+        self._boot_node = boot_node
+        self.get_logger().info("[DBG] MotionNode 초기화 시작")
 
         self._pause = False
         self._stop_soft = False
@@ -49,8 +39,8 @@ class MotionNode(Node):
         self._lock = threading.Lock()
 
         self.create_subscription(Int32, "/task/run_once", self._cb_run_once, 10)
-        self.create_subscription(Bool, "/task/pause", self._cb_pause, 10)
-        self.create_subscription(Bool, "/task/stop_soft", self._cb_stop_soft, 10)
+        self.create_subscription(Bool,  "/task/pause",    self._cb_pause,    10)
+        self.create_subscription(Bool,  "/task/stop_soft",self._cb_stop_soft,10)
 
         self.gripper = _GripperClient(self)
 
@@ -103,18 +93,38 @@ class MotionNode(Node):
 
 
 def main(args=None):
-    # rclpy.init()은 위에서 이미 했으므로 여기서 하지 않음
+    rclpy.init(args=args)
     node = None
     try:
         cfg = RobotConfig()
-        node = MotionNode(cfg)
+
+        # ✅ move_scraper.py와 완전히 동일한 패턴:
+        # 1. 클래스 밖(함수 스코프)에서 raw 노드 생성 → name mangling 없음
+        _boot_node = rclpy.create_node("motion_node", namespace=cfg.robot_id)
+
+        # 2. DR_init 세팅
+        DR_init.__dsr__id    = cfg.robot_id
+        DR_init.__dsr__model = cfg.robot_model
+        DR_init.__dsr__node  = _boot_node
+
+        # 3. DSR_ROBOT2 import (g_node가 유효한 상태)
+        import DSR_ROBOT2  # noqa: F401
+        print("[DBG] DSR_ROBOT2 import OK")
+
+        node = MotionNode(cfg, boot_node=_boot_node)
         rclpy.spin(node)
+
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        traceback.print_exc()
     finally:
         if node is not None:
             try:
                 node.destroy_node()
+                if node._boot_node:
+                    node._boot_node.destroy_node()
             except Exception:
                 pass
         try:
