@@ -4,7 +4,7 @@ import rclpy
 import DR_init
 
 from rclpy.node import Node
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, Int32, String
 
 # =========================
 # 로봇 설정 상수
@@ -22,6 +22,10 @@ ON, OFF = 1, 0
 # DR_init 설정
 DR_init.__dsr__id = ROBOT_ID
 DR_init.__dsr__model = ROBOT_MODEL
+
+
+is_start_requested = False
+stop_requested = False
 
 
 def initialize_robot():
@@ -52,6 +56,19 @@ def initialize_robot():
     print(f"ACC: {ACC}")
     print("#" * 50)
 
+def trigger_cb(msg: String):
+    global is_start_requested
+    global stop_requested
+    command = msg.data.strip().lower()
+
+    if command == "start":
+        print("[CMD] start received")
+        is_start_requested = True
+        stop_requested = False  
+    elif command == "pause":
+        print("[CMD] pause received")
+    elif command == "reset":
+        print("[CMD] reset received")
 
 def perform_task(node: Node):
     """로봇이 수행할 작업 + 그리퍼 퍼블리시"""
@@ -68,7 +85,25 @@ def perform_task(node: Node):
             wait(0.5)
             # print("Waiting for digital input...")
 
+    def go_home_and_stop():
+        """stop 명령 시: 초기 위치로 복귀 후 작업 종료"""
+        try:
+            node.get_logger().warn("STOP requested -> moving to JReady and exiting task")
+            movej(JReady, vel=VELOCITY, acc=ACC)
+        except Exception as e:
+            node.get_logger().error(f"Failed to move to JReady on STOP: {e}")
+        return True  # stop 처리됨
 
+    def check_stop()->bool:
+        """동작 사이사이에 호출: stop이면 복귀 후 True"""
+        # 콜백 처리를 위해 spin 한번 돌려줌 (중요)
+        rclpy.spin_once(node, timeout_sec=0.0)
+
+        if stop_requested:
+            stop_requested = False  # 1회성 처리
+            return go_home_and_stop()
+        return False
+    
     # Release 동작
     def release():
         print("Releasing...")
@@ -89,6 +124,31 @@ def perform_task(node: Node):
         10
     )
 
+    step_pub = node.create_publisher(
+        Int32,
+        "/robot/step",
+        10
+    )
+
+    state_pub = node.create_publisher(
+        String,
+        "/robot/state",
+        10
+    )
+
+
+
+
+
+    '''
+    initial 0
+    접착제 파지중1 
+    도포중 2
+    타일 3
+
+    /robot/command/action 
+    "start" -> 시작 
+    '''
     def set_gripper(width_m: float):
         """
         width_m: finger width (m)
@@ -100,6 +160,13 @@ def perform_task(node: Node):
         node.get_logger().info(f"[GRIPPER] publish: {msg.data}")
 
     def pick_scraper():
+        step_msg = Int32()
+        step_msg.data = 1  
+        step_pub.publish(step_msg)
+        state_msg = String()
+        state_msg.data = "접착제 도포준비중"
+        state_pub.publish(state_msg)
+    
         #밀대 파지전 위치 이동 
         pre_grasp_pos = posx([634.6129150390625, 70.18247985839844, 216.4523162841797, 52.00111389160156, 179.09434509277344, 52.347633361816406])
         movel(pre_grasp_pos,vel=60,acc=60)
@@ -112,6 +179,12 @@ def perform_task(node: Node):
         time.sleep(4.0)
 
     def place_scraper():
+        step_msg = Int32()
+        step_msg.data = 3 
+        step_pub.publish(step_msg)
+        state_msg = String()
+        state_msg.data = "타일파지 준비중"
+        state_pub.publish(state_msg)
         #밀대 파지전 위치 이동 
         pre_grasp_pos = posx([634.6129150390625, 70.18247985839844, 216.4523162841797, 52.00111389160156, 179.09434509277344, 52.347633361816406])
         movel(pre_grasp_pos,vel=60,acc=60)
@@ -125,53 +198,14 @@ def perform_task(node: Node):
 
 
 
-    # (예시) 초기 위치 및 목표 위치
+    # 초기 위치 및 목표 위치
     JReady = [0, 0, 90, 0, 90, 0]
-    pos1 = posx([500, 80, 200, 150, 179, 150]) 
-
     node.get_logger().info(f"JReady = {JReady}")
-    node.get_logger().info(f"pos1   = {pos1}")
 
     # 반복 동작
     while rclpy.ok():
-        # # 얘는 접착제 
-        # movej(JReady, vel=VELOCITY, acc=ACC)
-        # set_gripper(0.060)
-        # time.sleep(2.0)
-
-        # pos2 = posx([374.6396179199219, -245.0562744140625, 278.8721008300781, 91.11102294921875, -139.75392150878906, 90.13805389404297])
-        # movel(pos2,vel=60,acc=60)
-        # time.sleep(2.0)
-
-        # pos3 = posx([375.3787841796875, -288.3359680175781, 229.7924346923828, 91.1861801147461, -139.70118713378906, 90.18544006347656])
-        # movel(pos3,vel=60,acc=60)
-        # time.sleep(2.0)
-
-        # set_gripper(0.034)
-        # time.sleep(2.0)
-
-        # pos4 = posx([341.48187255859375, -452.4921569824219, 362.4076843261719, 91.81242370605469, -139.04881286621094, 90.89047241210938])
-        # movel(pos4,vel=60,acc=60)
-        # time.sleep(1.0)
-
-        # pos5 = posx([337.8330993652344, -118.81729125976562, 354.3833923339844, 94.10023498535156, -176.3974609375, 93.70670318603516])
-        # movel(pos5,vel=60,acc=60)
-        # time.sleep(1.0)
-        
-        # pos6 = posx([361.9256591796875, -82.01500701904297, 327.6671447753906, 126.4363784790039, -178.03363037109375, 128.0858917236328])
-        # movel(pos6,vel=60,acc=60)
-        # time.sleep(1.0)
-
-        # pos7 = posx([411.6914978027344, 86.2454605102539, 200.359130859375, 93.36572265625, -141.7025146484375, 92.81163024902344])
-        # movel(pos7,vel=60,acc=60)
-        # time.sleep(1.0)
-
-        # set_gripper(0.00)
-        # time.sleep(12.0)
-
         movej(JReady, vel=VELOCITY, acc=ACC)
-        #release()
-        set_gripper(0.06)
+        set_gripper(0.06) # release
         time.sleep(2.0)
         
         pick_scraper()
@@ -181,8 +215,6 @@ def perform_task(node: Node):
         movel(pos3,vel=60,acc=60)
         time.sleep(1.0)
 
-        # set_gripper(0.034)
-        # time.sleep(2.0)
         #밀대 들고 가운데로 이동 
         pos4 = posx([480.86981201171875, 68.99758911132812, 167.26080322265625, 59.91958999633789, 179.1564178466797, 60.55112075805664])
         movel(pos4,vel=60,acc=60)
@@ -195,29 +227,44 @@ def perform_task(node: Node):
         ########################################
     
         print("시멘트 펴바르기 작업 시작")
+        step_msg = Int32()
+        step_msg.data = 2
+        step_pub.publish(step_msg)
+        state_msg = String()
+        state_msg.data = "접착제 도포중"
+        state_pub.publish(state_msg)
         tilt_right = posx([465.40,-34.13,160.68,92.35,-142.05,179.91])   #tilt +x
         movel(tilt_right, vel=40,acc=40)
         time.sleep(1.0)
 
-        pos7 = posx([465.40,250.13,160.68,92.35,-142.05,179.91])
+        pos7 = posx([485.40,250.13,160.68,92.35,-142.05,179.91])
         movel(pos7, vel=40,acc=40)
         time.sleep(1.0)
 
-        tilt_left = posx([462.86,274.11,160.68,93.23,148.62,-179.15]) # tilt -x
-        movel(tilt_left, vel=20,acc=20)
+        tilt_left = posx([485.40,274.11,160.68,93.23,148.62,-179.15]) # tilt -x
+        movel(tilt_left, vel=40,acc=40)
+
         time.sleep(1.0)
 
-        pos9 = posx([528.40,-34.13,160.68,93.23,148.62,-179.15])
+        pos8 = posx([505.40,-115.13,160.68,93.23,148.62,-179.15]) 
+        movel(pos8, vel=40,acc=40)
+
+        time.sleep(1.0)
+
+        tilt_right2 = posx([505.40,-115.13,165.68,92.35,-142.05,179.91])   #tilt +x
+        movel(tilt_right2, vel=40,acc=40)
+        time.sleep(1.0)
+
+        tilt_right2 = posx([505.40,-115.13,160.68,92.35,-142.05,179.91])   #move -5 z axis
+        movel(tilt_right2, vel=40,acc=40)
+        time.sleep(1.0)
+    
+        pos9 = posx([505.40, 250.13,165.68,92.35,-142.05,179.91])  
         movel(pos9, vel=40,acc=40)
         time.sleep(1.0)
 
-        # pos9 = posx([528.40,-34.13,160.68,92.35,-142.05,179.91])
-        # movel(pos9, vel=40,acc=40)
-        # time.sleep(1.0)
 
 
-        # pos9 = posx([528.40,250.13,160.68,92.35,-142.05,179.91])
-        # movel(pos9, vel=40,acc=40)
         time.sleep(1.0)
         print("시멘트 펴바르기 작업 종료")
         #########################################
@@ -232,12 +279,27 @@ def main(args=None):
     rclpy.init(args=args)
 
     node = rclpy.create_node("move_scraper", namespace=ROBOT_ID)
-
+    global is_start_requested
     # DR_init에 노드 설정
     DR_init.__dsr__node = node
 
+    node.create_subscription(
+        String,
+        "/robot/command",
+        trigger_cb,
+        10
+    )
+
     try:
         initialize_robot()
+        print("Waiting for /robot/command 'start' ...")
+        # while rclpy.ok() and not is_start_requested:
+        #     rclpy.spin_once(node, timeout_sec=0.1)
+
+        # if not rclpy.ok():
+        #     return
+
+        # is_start_requested = False  # 1회성 트리거면 리셋
         perform_task(node)
 
     except KeyboardInterrupt:
