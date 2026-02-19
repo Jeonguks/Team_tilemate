@@ -49,7 +49,7 @@ class TaskControllerNode(Node):
             self._publish_stop_soft(False)
             self._publish_pause(False)
             # start를 “1회 실행”으로 보고 싶으면 아래 켜기
-            # self._publish_run_once()
+            self._publish_run_once()
 
         elif cmd == "once":
             self.get_logger().info("[CMD] once")
