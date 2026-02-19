@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# tilemate_main/motion_node.py
 import time
 import threading
 import traceback
@@ -7,16 +6,27 @@ import sys
 
 import rclpy
 from rclpy.node import Node
-
 from std_msgs.msg import Bool, Int32, Float64
 
+# ✅ 핵심: 노드 생성 전에 DR_init 세팅 후 DSR_ROBOT2 import
 import DR_init
+
+# 하드코딩으로 먼저 테스트
+setattr(DR_init, '__dsr__id', 'dsr01')
+setattr(DR_init, '__dsr__model', 'm0609')
+
+# 임시 노드를 만들어서 DSR_ROBOT2 import용으로 사용
+rclpy.init()
+_tmp_node = rclpy.create_node('motion_node', namespace='dsr01')
+setattr(DR_init, '__dsr__node', _tmp_node)
+
+import DSR_ROBOT2  # 이 시점에 g_node가 세팅된 상태
+
 from tilemate_main.robot_config import RobotConfig
 from tilemate_main.scraper_task_lib import ScraperTask
 
 
 class _GripperClient:
-    """motion_node에서 gripper_node로 폭 명령을 보내기 위한 thin client."""
     def __init__(self, node: Node):
         self._node = node
         self._pub = node.create_publisher(Float64, "/gripper/width_m", 10)
@@ -25,50 +35,15 @@ class _GripperClient:
         msg = Float64()
         msg.data = float(width_m)
         self._pub.publish(msg)
-        self._node.get_logger().info(f"[GRIPPER->CMD] width_m={msg.data:.4f}")
 
 
 class MotionNode(Node):
-    """
-    - DSR_ROBOT2 전용 노드
-    - /task/run_once 증가 시 1사이클 실행
-    - /task/pause True면 대기
-    - /task/stop_soft True면 루프/작업 중단(논리 stop)
-    """
     def __init__(self, cfg: RobotConfig):
         super().__init__("motion_node", namespace=cfg.robot_id)
         self.cfg = cfg
 
-        # -------------------------
-        # DR_init 연결 (DSR_ROBOT2는 이 노드로만 동작)
-        # -------------------------
-        DR_init.g_node = self
-        DR_init.ROBOT_ID = cfg.robot_id
-        DR_init.ROBOT_MODEL = cfg.robot_model
-
-        # 디버그: 실제로 어떤 DR_init을 보고 있는지(경로 확인)
-        self.get_logger().info(f"[DBG] DR_init file: {getattr(DR_init, '__file__', 'UNKNOWN')}")
-        self.get_logger().info(f"[DBG] DR_init id/model/node: {DR_init.__dsr__id}/{DR_init.__dsr__model}/{type(DR_init.__dsr__node)}")
-
-        # -------------------------
-        # DSR_ROBOT2 import (여기서 실패하면 즉시 종료)
-        # -------------------------
-        try:
-            import DSR_ROBOT2  # noqa: F401
-            self.get_logger().info("[DBG] DSR_ROBOT2 import OK")
-        except Exception as e:
-            self.get_logger().error("❌ DSR_ROBOT2 import failed. This usually means DR_init.__dsr__node is not set correctly *at import time*.")
-            self.get_logger().error(f"Exception: {e}")
-            self.get_logger().error(traceback.format_exc())
-            # launch에서 원인을 명확히 보이게 바로 종료
-            raise
-
-        # -------------------------
-        # 상태 플래그 / 동기화
-        # -------------------------
         self._pause = False
         self._stop_soft = False
-
         self._run_token = 0
         self._run_event = threading.Event()
         self._lock = threading.Lock()
@@ -77,42 +52,31 @@ class MotionNode(Node):
         self.create_subscription(Bool, "/task/pause", self._cb_pause, 10)
         self.create_subscription(Bool, "/task/stop_soft", self._cb_stop_soft, 10)
 
-        # gripper client & task
         self.gripper = _GripperClient(self)
 
-        # ✅ ScraperTask 생성자 시그니처에 맞춰 호출해야 함
-        # - 예전 버전: ScraperTask(node, gripper, cfg)
-        # - 지금 버전: ScraperTask(gripper, cfg)  (네가 올린 코드 기준)
         try:
             self.task = ScraperTask(self.gripper, cfg)
         except TypeError:
-            # 혹시 아직 예전 시그니처라면 자동 fallback
             self.task = ScraperTask(self, self.gripper, cfg)
 
-        # 워커 스레드
         self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker.start()
 
-        # 초기화는 노드 시작 시 1회 (DSR_ROBOT2 import 이후!)
         self.task.initialize_robot()
-        self.get_logger().info("MotionNode ready: wait /task/run_once")
+        self.get_logger().info("MotionNode ready")
 
     def _cb_run_once(self, msg: Int32):
         with self._lock:
-            # 같은 값 반복 수신 방지(단순 안전장치)
             if msg.data <= self._run_token:
                 return
             self._run_token = int(msg.data)
-        self.get_logger().info(f"[TASK] run_once token={self._run_token}")
         self._run_event.set()
 
     def _cb_pause(self, msg: Bool):
         self._pause = bool(msg.data)
-        self.get_logger().warn(f"[TASK] pause={self._pause}")
 
     def _cb_stop_soft(self, msg: Bool):
         self._stop_soft = bool(msg.data)
-        self.get_logger().warn(f"[TASK] stop_soft={self._stop_soft}")
 
     def _wait_if_paused(self):
         while rclpy.ok() and self._pause and not self._stop_soft:
@@ -124,16 +88,11 @@ class MotionNode(Node):
             if not self._run_event.is_set():
                 continue
             self._run_event.clear()
-
             if self._stop_soft:
-                self.get_logger().warn("[TASK] stop_soft is True -> skip run_once")
                 continue
-
-            # pause 대기
             self._wait_if_paused()
             if self._stop_soft:
                 continue
-
             try:
                 self.get_logger().info("[TASK] run_once start")
                 self.task.run_once()
@@ -144,7 +103,7 @@ class MotionNode(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
+    # rclpy.init()은 위에서 이미 했으므로 여기서 하지 않음
     node = None
     try:
         cfg = RobotConfig()
@@ -158,7 +117,6 @@ def main(args=None):
                 node.destroy_node()
             except Exception:
                 pass
-        # ✅ launch가 이미 shutdown 호출할 수 있어서 안전 처리
         try:
             if rclpy.ok():
                 rclpy.shutdown()
