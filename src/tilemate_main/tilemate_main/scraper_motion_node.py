@@ -35,7 +35,8 @@ class _RobotStatusPub:
     STEP_PREPARE = 0   # 파지 준비전
     STEP_GRIPPING = 1  # 파지중
     STEP_COATING = 2   # 도포중
-    STEP_DONE = 3      # 끝
+    STEP_FINISH = 3
+    STEP_DONE = 777      # 끝
 
     def __init__(self, node: Node):
         self._node = node
@@ -278,13 +279,13 @@ def run_once_like_script(
 
     motion_node.get_logger().info("시멘트 펴바르기 작업 종료")
 
-    movej(JReady, vel=cfg.vel, acc=cfg.acc)
+    #movej(JReady, vel=cfg.vel, acc=cfg.acc)
     time.sleep(2.0)
     if not wait_if_paused_or_stopped():
         return
 
     # 3: 끝
-    status.set(_RobotStatusPub.STEP_DONE, "끝")
+    status.set(_RobotStatusPub.STEP_FINISH, "끝")
     place_scraper()
 
 
@@ -327,12 +328,12 @@ def main(args=None):
             if ctrl_node.stop_soft:
                 status.set(_RobotStatusPub.STEP_DONE, "중단됨(stop_soft)")
                 time.sleep(0.1)
-                continue
+                break
 
             if ctrl_node.pause:
                 status.set(_RobotStatusPub.STEP_PREPARE, "일시정지(pause)")
                 time.sleep(0.1)
-                continue
+                break
 
             if ctrl_node.run_token > last_done_token:
                 tok = ctrl_node.run_token

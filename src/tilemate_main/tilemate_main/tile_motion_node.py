@@ -205,7 +205,7 @@ class TileMotionNode(Node):
         self.pub_status = self.create_publisher(String, "/tile/status", 10)
         self.pub_state = self.create_publisher(String, "/robot/state", 10)
         self.pub_step = self.create_publisher(Int32, "/robot/step", 10 )
-        self.pub_completed_jobs = self.create_publisher(Int32, "/completed/jobs", 10)
+        self.pub_completed_jobs = self.create_publisher(Int32, "/robot/completed_jobs", 10)
         self._completed_jobs = 0
         #
         self.create_subscription(Int32, "/tile/run_once", self._cb_run_once, 10)
@@ -233,8 +233,11 @@ class TileMotionNode(Node):
         m_step.data = step
         m_state = String()
         m_state.data = state
-        self.pub_step.publish(m_step)
-        self.pub_state.publish(m_state)
+        if step == 4:
+            self.pub_step.publish(m_step)
+            self.pub_state.publish(m_state)
+            self._completed_jobs += 1
+            self._publish_completed_jobs()
         self.get_logger().info(f"[STATUS] step={step} state='{state}'")
 
     def _publish_completed_jobs(self):
@@ -298,8 +301,8 @@ class TileMotionNode(Node):
             self._perform_task_2x2()
             # ✅ 성공 완료 시에만 1 증가
             if not self._stop_soft:
-                self._completed_jobs += 1
-                self._publish_completed_jobs()
+                
+                
                 self._set_robot_status(5, "타일 작업 완료")
 
             self._publish_status(f"done:{tok}")
