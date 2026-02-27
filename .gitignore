@@ -1,36 +1,21 @@
-<<<<<<< HEAD
 #ros
 build/
 log/
 install/
 
-#vscode
-.vscode/
 # Python cache
 *.pyc
 __pycache__/
-=======
+*.egg-info/
+
 # Firebase Secrets
 *.json
 src/cobot1/config/*.json
 
-# ROS2 build artifacts
-build/
-install/
-log/
-
-# Python
-__pycache__/
-*.pyc
-*.egg-info/
-
 # OS specific
 .DS_Store
-<<<<<<< HEAD
->>>>>>> 753f14b ([Feat] web ui 및 웹으로 로봇팔 제어 기능)
-=======
 
 # VS Code 환경 파일 무시
+.vscode/
 .vscode/colcon.env
 **/.vscode/
->>>>>>> 0846997 ([bug fix] entry_points  syntax error fix ,  duplicate entry_points fix)
