@@ -24,7 +24,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, Int32, String, Float32MultiArray
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import JointState, Image
 from dsr_msgs2.srv import GetToolForce, GetExternalTorque
 
 import firebase_admin
@@ -81,9 +81,16 @@ class FirebaseBridgeNode(Node):
         self.create_subscription(Int32,            "/robot/tile_inspect_no",       self._cb_tile_inspect_no,             10)
         self.create_subscription(Int32,            "/robot/pressing_no",             self._cb_pressing_no,             10)
         
-        self.get_logger().info("Subscribed: /robot/step, /robot/state, /robot/tcp, "
-                               "/robot/completed_jobs,"
-                               "/dsr01/joint_states")
+        # ── Depth Image 구독 (/camera/camera/depth/image_rect_raw) ──
+        self._depth_ref = db.reference("/depth_image")
+        self._last_depth_update = 0.0
+        self.create_subscription(
+            Image,
+            "/camera/camera/depth/image_rect_raw",
+            self._cb_depth_image,
+            10
+        )
+        self.get_logger().info("Subscribed: /camera/camera/depth/image_rect_raw")
         self.get_logger().info("Publishing: /robot/command, /robot/design, /robot/design_ab")
 
         # ── 서비스 클라이언트 ──────────────────────────────
@@ -336,6 +343,110 @@ class FirebaseBridgeNode(Node):
             except Exception as e:
                 self.get_logger().error(f"Firebase watch error: {e}")
             time.sleep(0.3)
+
+    # ── 콜백: Depth/RGB Image → Firebase ────────────────────
+    # 인코딩 자동 감지: rgb8(컬러) / 16UC1(깊이 그레이)
+    def _cb_depth_image(self, msg: Image):
+        now = time.time()
+        if now - self._last_depth_update < 0.5:   # 2fps 상한 (Firebase 부하 방지)
+            return
+        self._last_depth_update = now
+
+        try:
+            import base64, zlib, struct
+
+            w, h     = msg.width, msg.height
+            encoding = msg.encoding
+            raw      = bytes(msg.data)
+
+            # ── 다운샘플 해상도 결정 (320x240 이하) ──
+            scale = max(1, max(w // 320, h // 240))
+            dw = w // scale
+            dh = h // scale
+
+            d_min = d_max = 0
+
+            if encoding in ('rgb8', 'bgr8', 'rgba8'):
+                # ── RGB 컬러 이미지 ──────────────────────
+                ch = 4 if encoding == 'rgba8' else 3
+                arr = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, ch)
+                if encoding == 'bgr8':
+                    arr = arr[:, :, ::-1]   # BGR → RGB
+                # 다운샘플 + RGB만 추출
+                ds = arr[::scale, ::scale, :3][:dh, :dw]  # (dh, dw, 3)
+                # RGBA로 변환
+                alpha  = np.full((dh, dw, 1), 255, dtype=np.uint8)
+                rgba_arr = np.concatenate([ds, alpha], axis=2)   # (dh, dw, 4)
+
+            elif encoding in ('16UC1', '16UC1_bigendian', 'mono16'):
+                # ── 16bit 깊이 이미지 ────────────────────
+                endian = '>' if 'bigendian' in encoding or msg.is_bigendian else '<'
+                arr = np.frombuffer(raw, dtype=np.dtype(f'{endian}u2')).reshape(h, w)
+                ds  = arr[::scale, ::scale][:dh, :dw]           # (dh, dw)
+
+                valid = ds[ds > 0]
+                if valid.size == 0:
+                    self.get_logger().warn("[DEPTH] 유효 깊이 픽셀 없음 (전부 0)")
+                    return
+                d_min = int(valid.min())
+                d_max = int(valid.max())
+                span  = max(d_max - d_min, 1)
+
+                # Turbo 컬러맵 (numpy 벡터화)
+                norm = np.where(ds > 0, (ds.astype(np.float32) - d_min) / span, -1.0)
+                t    = np.clip(1.0 - norm, 0.0, 1.0)   # 가까울수록 1→빨강
+                r_ch = np.clip((1.5 - np.abs(2.0*t - 1.5)*1.5), 0, 1)
+                g_ch = np.clip((1.5 - np.abs(2.0*t - 1.0)*2.0), 0, 1)
+                b_ch = np.clip((1.5 - np.abs(2.0*t - 0.5)*1.5), 0, 1)
+                invalid = (ds == 0)
+                r_ch[invalid] = 0; g_ch[invalid] = 0; b_ch[invalid] = 0
+                rgba_arr = np.stack([
+                    (r_ch * 255).astype(np.uint8),
+                    (g_ch * 255).astype(np.uint8),
+                    (b_ch * 255).astype(np.uint8),
+                    np.full((dh, dw), 255, dtype=np.uint8),
+                ], axis=2)   # (dh, dw, 4)
+
+            else:
+                self.get_logger().warn(f"[DEPTH] 미지원 인코딩: {encoding}")
+                return
+
+            # ── Raw PNG 인코딩 (zlib, 표준 PNG) ─────────
+            def make_chunk(ctype, data):
+                crc = zlib.crc32(ctype + data) & 0xFFFFFFFF
+                return struct.pack('>I', len(data)) + ctype + data + struct.pack('>I', crc)
+
+            ihdr = struct.pack('>IIBBBBB', dw, dh, 8, 6, 0, 0, 0)  # RGBA
+            rows = bytearray()
+            for row in range(dh):
+                rows.append(0)   # filter: None
+                rows.extend(rgba_arr[row].tobytes())
+            idat = zlib.compress(bytes(rows), 1)   # 빠른 압축
+
+            png = (b'\x89PNG\r\n\x1a\n'
+                   + make_chunk(b'IHDR', ihdr)
+                   + make_chunk(b'IDAT', idat)
+                   + make_chunk(b'IEND', b''))
+
+            b64 = base64.b64encode(png).decode('ascii')
+
+            self._depth_ref.set({
+                "image":     b64,
+                "width":     dw,
+                "height":    dh,
+                "encoding":  encoding,
+                "d_min":     d_min,
+                "d_max":     d_max,
+                "timestamp": int(now * 1000),
+            })
+            self.get_logger().info(
+                f"[DEPTH] {encoding} {dw}x{dh} "
+                + (f"d={d_min}~{d_max}mm " if d_max > 0 else "")
+                + f"png={len(png)//1024}KB → Firebase"
+            )
+
+        except Exception as e:
+            self.get_logger().error(f"[DEPTH] error: {e}")
 
     # ── 콜백: 로봇 상태 → Firebase ────────────────────────
     def _cb_step(self, msg: Int32):

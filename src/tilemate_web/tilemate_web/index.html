@@ -24,8 +24,8 @@
         #btn-pause { background-color: #fff3e0; color: #ef6c00; border: 2px solid #ef6c00; }
         #btn-reset { background-color: #ffebee; color: #c62828; border: 2px solid #c62828; }
 
-        .process-flow { display: flex; justify-content: space-between; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 25px; }
-        .step { font-weight: bold; color: #999; font-size: 1.1em; padding: 5px 15px; border-radius: 20px; }
+        .process-flow { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 12px 10px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 25px; flex-wrap: nowrap; gap: 2px; }
+        .step { font-weight: bold; color: #999; font-size: 0.85em; padding: 4px 8px; border-radius: 20px; white-space: nowrap; text-align: center; }
         .step.active { background-color: #ff0000; color: #ffffff !important; box-shadow: 0 0 10px rgba(255,0,0,0.5); }
 
         .bottom-section { display: flex; gap: 20px; align-items: stretch; }
@@ -154,20 +154,25 @@
         <button id="btn-start" onclick="openDesignPopup()">시작</button>
         <button id="btn-pause" onclick="sendCommand('stop')">일시정지</button>
         <button id="btn-reset" onclick="resetSystem()">초기화</button>
+        <button id="btn-pointcloud" onclick="openPointCloudViewer()" style="background-color: #e3f2fd; color: #1565c0; border: 2px solid #1565c0;">🎨 깊이 이미지</button>
     </div>
 
     <div class="process-flow">
-        <div id="step1" class="step">접착제 파지</div>
+        <div id="step1" class="step">타일 파지</div>
         <div class="step">→</div>
-        <div id="step2" class="step">접착제 도포</div>
+        <div id="step2" class="step">타일 툴에 배치</div>
         <div class="step">→</div>
-        <div id="step3" class="step">타일 파지</div>
+        <div id="step3" class="step">스크래퍼 파지</div>
         <div class="step">→</div>
-        <div id="step4" class="step">타일 배치</div>
+        <div id="step4" class="step">접착제 풀기</div>
         <div class="step">→</div>
-        <div id="step5" class="step">타일 압착 확인</div>
+        <div id="step5" class="step">접착제 바르기</div>
         <div class="step">→</div>
-        <div id="step6" class="step">타일 압착 중</div>
+        <div id="step6" class="step">타일 배치</div>
+        <div class="step">→</div>
+        <div id="step7" class="step">단차 확인</div>
+        <div class="step">→</div>
+        <div id="step8" class="step">압착</div>
     </div>
 
     <div class="bottom-section" id="bottom-section" style="position: relative;">
@@ -356,8 +361,39 @@
             <button class="popup-cancel" onclick="backToDesignPopup()">← 뒤로</button>
         </div>
     </div>
+    <!-- 깊이 이미지 뷰어 팝업 -->
+    <div class="popup-overlay" id="pointcloud-popup">
+        <div class="popup-box" style="width: 780px; max-width: 97vw;">
+            <h2 style="color: #1565c0;">🎨 깊이 이미지 뷰어</h2>
+            <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
+                <span id="pc-status" style="font-size:0.9em; color:#555; background:#f0f2f5; padding:4px 12px; border-radius:20px;">● 대기 중</span>
+                <span id="pc-depth-range" style="font-size:0.9em; color:#1565c0; font-weight:bold;"></span>
+                <span id="pc-fps" style="font-size:0.9em; color:#388e3c; font-weight:bold;"></span>
+                <button id="pc-subscribe-btn" onclick="toggleDepthSubscription()"
+                    style="padding:6px 18px; font-size:0.95em; background:#1565c0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; flex:unset;">
+                    수신 시작
+                </button>
+            </div>
+            <!-- 깊이 이미지 캔버스 -->
+            <div style="position:relative; background:#0a0a1a; border-radius:10px; border:1px solid #1565c0; overflow:hidden; text-align:center; min-height:320px; display:flex; align-items:center; justify-content:center;">
+                <div id="pc-placeholder" style="color:#445; font-size:1em; display:flex; flex-direction:column; align-items:center; gap:10px;">
+                    <div style="font-size:2.5em;">🎨</div>
+                    <div>Firebase에서 깊이 이미지 수신 대기 중...</div>
+                    <div style="font-size:0.85em; color:#334;">/camera/camera/depth/image_rect_raw</div>
+                </div>
+                <canvas id="depth-canvas" style="display:none; max-width:100%; border-radius:8px; image-rendering:pixelated;"></canvas>
+            </div>
+            <!-- 컬러바 범례 -->
+            <div id="depth-legend" style="display:none; margin-top:10px; align-items:center; gap:10px; font-size:0.85em; color:#555;">
+                <span id="legend-min" style="font-weight:bold; color:#2196f3;"></span>
+                <div style="flex:1; height:14px; border-radius:6px; background:linear-gradient(to right,#0000ff,#00ff00,#ff0000); border:1px solid #ccc;"></div>
+                <span id="legend-max" style="font-weight:bold; color:#f44336;"></span>
+                <span style="color:#888; font-size:0.9em;">(가까움 → 멀음)</span>
+            </div>
+            <button class="popup-cancel" onclick="closeDepthViewer()" style="margin-top:14px;">닫기</button>
+        </div>
+    </div>
 </div>
-
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
@@ -435,25 +471,57 @@
     scene.background = new THREE.Color(0xf0f2f5);
 
     const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(5, 5, 5);
+    camera.position.set(0, 0, 7);   // 벽 정면에서 바라봄
+    camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
     const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, 0);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    const light = new THREE.DirectionalLight(0xffffff, 0.5);
-    light.position.set(10, 20, 10);
+    // 조명
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const light = new THREE.DirectionalLight(0xffffff, 0.6);
+    light.position.set(4, 6, 8);
+    light.castShadow = true;
     scene.add(light);
 
-    // 3D 타일 생성 (3x3)
+    // ── 벽 (타일이 붙는 면, z=0 평면) ──────────────────────
+    const tileGap  = 0.9;
+    const tileSize = 0.8;
+    const wallW = (COLS - 1) * tileGap + tileSize + 0.3;
+    const wallH = (ROWS - 1) * tileGap + tileSize + 0.3;
+
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xd4c5a9 });  // 시멘트색
+    const wallMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(wallW, wallH, 0.15),
+        wallMat
+    );
+    wallMesh.position.set(0, 0, -0.12);
+    scene.add(wallMesh);
+
+    // 바닥 (얇은 플랫폼)
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0xb0bec5 });
+    const floorDepth = 1.2;
+    const floorMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(wallW, 0.12, floorDepth),
+        floorMat
+    );
+    // 바닥 뒷면이 벽 앞면(z ≈ -0.075+0.15/2 = -0.075+0.075 = 0)에 붙도록
+    // 벽 앞면 z = -0.12 + 0.15/2 = -0.12 + 0.075 = -0.045
+    // 바닥 뒷면 z = floorMesh.z - floorDepth/2 → -0.045 이므로 z = -0.045 + floorDepth/2
+    floorMesh.position.set(0, -(wallH / 2) - 0.06, -0.045 + floorDepth / 2);
+    scene.add(floorMesh);
+
+    // 3D 타일 생성 (3x3, 벽면에 배치)
+    // 타일 인덱스: 왼쪽위→오른쪽, 위→아래 (row=0 상단)
     const tiles3D = [];
-    const tileGeom = new THREE.BoxGeometry(0.8, 0.1, 0.8);
-    const tileGap = 0.9;
+    const tileGeom = new THREE.BoxGeometry(tileSize, tileSize, 0.08);   // 얇은 사각형 타일
     const startX = -((COLS - 1) * tileGap) / 2;
-    const startZ = -((ROWS - 1) * tileGap) / 2;
+    const startY =  ((ROWS - 1) * tileGap) / 2;   // 위에서부터
 
     for (let i = 0; i < TOTAL_TILES; i++) {
         const mesh = new THREE.Mesh(
@@ -462,61 +530,36 @@
         );
         const row = Math.floor(i / COLS);
         const col = i % COLS;
-        mesh.position.set(startX + col * tileGap, 0.05, startZ + row * tileGap);
+        // 벽면(z=0)에 붙임
+        mesh.position.set(
+            startX + col * tileGap,
+            startY - row * tileGap,
+            0.04   // 벽보다 살짝 앞으로
+        );
         scene.add(mesh);
         tiles3D.push(mesh);
     }
 
-    // 벽 위치 계산
-    const tileSize = 0.8;
-    const tileEndX   = startX + (COLS - 1) * tileGap + tileSize / 2;
-    const tileStartX = startX - tileSize / 2;
-    const tileEndZ   = startZ + (ROWS - 1) * tileGap + tileSize / 2;
-    const tileStartZ = startZ - tileSize / 2;
-    const padding = 0.05;
-
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x546e7a, transparent: true, opacity: 0.7 });
-    const wallThickness = 0.2;
-
-    // 뒤쪽 벽
-    const backWall = new THREE.Mesh(
-        new THREE.BoxGeometry(tileEndX - tileStartX, 2.5, wallThickness),
-        wallMat
-    );
-    backWall.position.set(
-        (tileStartX + tileEndX) / 2,
-        1.25,
-        tileStartZ - padding - wallThickness / 2
-    );
-    scene.add(backWall);
-
-    // 왼쪽 벽
-    const sideWall = new THREE.Mesh(
-        new THREE.BoxGeometry(wallThickness, 2.5, tileEndZ - tileStartZ),
-        wallMat
-    );
-    sideWall.position.set(
-        tileStartX - padding - wallThickness / 2,
-        1.25,
-        (tileStartZ + tileEndZ) / 2
-    );
-    scene.add(sideWall);
-
-    // 바닥 플랫폼 (타일 3x3 크기, 벽 높이 1/3)
-    const wallHeight = 2.5;
-    const platformH  = wallHeight / 3;
-    const platformW  = tileEndX - tileStartX;
-    const platformD  = tileEndZ - tileStartZ;
-    const platform = new THREE.Mesh(
-        new THREE.BoxGeometry(platformW, platformH, platformD),
-        new THREE.MeshStandardMaterial({ color: 0xfffff0, transparent: false })
-    );
-    platform.position.set(
-        (tileStartX + tileEndX) / 2,
-        -(platformH / 2),   // 타일(y=0) 바로 아래
-        (tileStartZ + tileEndZ) / 2
-    );
-    scene.add(platform);
+    // 그라우팅 선 (타일 사이 줄눈) — 벽면 위에 그리기
+    const groutMat = new THREE.LineBasicMaterial({ color: 0x888888, linewidth: 1 });
+    // 가로줄
+    for (let r = 0; r <= ROWS; r++) {
+        const y = startY + tileGap * 0.5 - (r * tileGap);
+        const pts = [
+            new THREE.Vector3(startX - tileSize / 2, y, 0.09),
+            new THREE.Vector3(-startX + tileSize / 2, y, 0.09),
+        ];
+        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), groutMat));
+    }
+    // 세로줄
+    for (let c = 0; c <= COLS; c++) {
+        const x = startX - tileGap * 0.5 + (c * tileGap);
+        const pts = [
+            new THREE.Vector3(x, startY + tileSize / 2, 0.09),
+            new THREE.Vector3(x, -startY - tileSize / 2, 0.09),
+        ];
+        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), groutMat));
+    }
 
     function animate() {
         requestAnimationFrame(animate);
@@ -647,7 +690,7 @@
             const pressTile = (data.inspect_no != null) ? parseInt(data.inspect_no) : 0;
             const pressVal  = (data.tile_level != null) ? parseFloat(data.tile_level) : 0.0;
 
-            if (pressTile >= 1 && pressTile <= TOTAL_TILES) {
+            if (isStarted && pressTile >= 1 && pressTile <= TOTAL_TILES) {
                 const el = document.getElementById(`tile-${pressTile}`);
                 if (el && tileState[pressTile] !== 'pressed') {
                     // 해당 타일 타이머 정지
@@ -684,7 +727,7 @@
         }
 
         // Step6: 타일 압착 중 (pressing 받아서 해당 타일 → 압착 완료)
-        if (currentStep === 6) {
+        if (isStarted && currentStep === 6) {
             const pressing = data.press_no || 0;
             if (pressing >= 1 && pressing <= TOTAL_TILES) {
                 const el = document.getElementById(`tile-${pressing}`);
@@ -731,11 +774,11 @@
     // 공정 단계 업데이트
     // -------------------------------------------------------
     function updateProcessStep(stepNumber) {
-        for (let i = 1; i <= 6; i++) {
+        for (let i = 1; i <= 8; i++) {
             const el = document.getElementById('step' + i);
             if (el) el.classList.remove('active');
         }
-        if (stepNumber > 0 && stepNumber <= 6) {
+        if (stepNumber > 0 && stepNumber <= 8) {
             const el = document.getElementById('step' + stepNumber);
             if (el) el.classList.add('active');
         }
@@ -1077,7 +1120,10 @@
             current_step: 0,
             speed: 0,
             state: '대기',
-            design: 0
+            design: 0,
+            inspect_no: 0,
+            tile_level: 0,
+            press_no: 0,
         });
         database.ref('robot_command').set({ action: 'reset', timestamp: Date.now() });
 
@@ -1127,6 +1173,90 @@
         camera.updateProjectionMatrix();
         renderer.setSize(container.clientWidth, container.clientHeight);
     });
+
+    // -------------------------------------------------------
+    // 깊이 이미지 뷰어 (depth_image_rect_raw)
+    // -------------------------------------------------------
+    let depthSubscribing = false;
+    let depthFirebaseListener = null;
+    let depthFpsInterval = null;
+    let depthFrameCount = 0;
+
+    function openPointCloudViewer() {
+        document.getElementById('pointcloud-popup').classList.add('show');
+    }
+    function closeDepthViewer() {
+        document.getElementById('pointcloud-popup').classList.remove('show');
+        stopDepthSubscription();
+    }
+    window.openPointCloudViewer = openPointCloudViewer;
+    window.closeDepthViewer = closeDepthViewer;
+
+    function toggleDepthSubscription() {
+        if (depthSubscribing) stopDepthSubscription();
+        else startDepthSubscription();
+    }
+    window.toggleDepthSubscription = toggleDepthSubscription;
+
+    function startDepthSubscription() {
+        if (!database) { alert('Firebase가 연결되지 않았습니다.'); return; }
+        depthSubscribing = true;
+        document.getElementById('pc-subscribe-btn').innerText = '수신 중지';
+        document.getElementById('pc-subscribe-btn').style.background = '#c62828';
+        document.getElementById('pc-status').innerHTML = '<span style="color:#4caf50;">● 수신 중</span>';
+
+        // FPS 카운터
+        depthFrameCount = 0;
+        depthFpsInterval = setInterval(() => {
+            document.getElementById('pc-fps').innerText = `${depthFrameCount} FPS`;
+            depthFrameCount = 0;
+        }, 1000);
+
+        depthFirebaseListener = database.ref('depth_image').on('value', (snap) => {
+            const data = snap.val();
+            if (!data || !data.image) return;
+            renderDepthImage(data);
+            depthFrameCount++;
+        });
+    }
+
+    function stopDepthSubscription() {
+        if (depthFirebaseListener) {
+            database.ref('depth_image').off('value', depthFirebaseListener);
+            depthFirebaseListener = null;
+        }
+        if (depthFpsInterval) { clearInterval(depthFpsInterval); depthFpsInterval = null; }
+        depthSubscribing = false;
+        document.getElementById('pc-subscribe-btn').innerText = '수신 시작';
+        document.getElementById('pc-subscribe-btn').style.background = '#1565c0';
+        document.getElementById('pc-status').innerHTML = '● 대기 중';
+        document.getElementById('pc-fps').innerText = '';
+    }
+
+    function renderDepthImage(data) {
+        const canvas = document.getElementById('depth-canvas');
+        const placeholder = document.getElementById('pc-placeholder');
+        const legend = document.getElementById('depth-legend');
+
+        // base64 PNG → Image → Canvas 그리기
+        const img = new Image();
+        img.onload = () => {
+            canvas.width  = data.width;
+            canvas.height = data.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+
+            placeholder.style.display = 'none';
+            canvas.style.display = 'block';
+            legend.style.display = 'flex';
+            // 범례 업데이트
+            document.getElementById('legend-min').innerText = `${data.d_min}mm`;
+            document.getElementById('legend-max').innerText = `${data.d_max}mm`;
+            document.getElementById('pc-depth-range').innerText =
+                `깊이: ${data.d_min}~${data.d_max}mm`;
+        };
+        img.src = 'data:image/png;base64,' + data.image;
+    }
 </script>
 </body>
 </html>
