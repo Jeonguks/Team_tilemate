@@ -24,7 +24,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, Int32, String, Float32MultiArray
-from sensor_msgs.msg import JointState, Image
+from sensor_msgs.msg import JointState, Image, PointCloud2
 from dsr_msgs2.srv import GetToolForce, GetExternalTorque
 
 import firebase_admin
@@ -91,6 +91,17 @@ class FirebaseBridgeNode(Node):
             10
         )
         self.get_logger().info("Subscribed: /camera/camera/depth/image_rect_raw")
+
+        # ── PointCloud2 구독 (/camera/camera/depth/color/points) ──
+        self._pc_ref = db.reference("/point_cloud")
+        self._last_pc_update = 0.0
+        self.create_subscription(
+            PointCloud2,
+            "/camera/camera/depth/color/points",
+            self._cb_point_cloud,
+            10
+        )
+        self.get_logger().info("Subscribed: /camera/camera/depth/color/points")
         self.get_logger().info("Publishing: /robot/command, /robot/design, /robot/design_ab")
 
         # ── 서비스 클라이언트 ──────────────────────────────
@@ -447,6 +458,73 @@ class FirebaseBridgeNode(Node):
 
         except Exception as e:
             self.get_logger().error(f"[DEPTH] error: {e}")
+
+    # ── 콜백: PointCloud2 → Firebase ────────────────────────
+    def _cb_point_cloud(self, msg: PointCloud2):
+        now = time.time()
+        if now - self._last_pc_update < 1.0:   # 1fps 상한
+            return
+        self._last_pc_update = now
+
+        try:
+            import base64, struct
+
+            point_step = msg.point_step   # 20 bytes per point
+            row_step   = msg.row_step
+            raw        = bytes(msg.data)
+            total_pts  = msg.width * msg.height
+
+            # x,y,z,rgb 오프셋 (fields에서 확인: x=0,y=4,z=8,rgb=16)
+            ox, oy, oz, orgb = 0, 4, 8, 16
+
+            # 최대 8000개 점만 균등 샘플링 (Firebase 크기 제한)
+            MAX_PTS = 8000
+            step = max(1, total_pts // MAX_PTS)
+
+            xs, ys, zs, rs, gs, bs = [], [], [], [], [], []
+
+            for i in range(0, total_pts, step):
+                base = i * point_step
+                if base + point_step > len(raw):
+                    break
+                x = struct.unpack_from('<f', raw, base + ox)[0]
+                y = struct.unpack_from('<f', raw, base + oy)[0]
+                z = struct.unpack_from('<f', raw, base + oz)[0]
+
+                # NaN/Inf 제거, z=0 제거
+                if not (x == x) or not (y == y) or not (z == z):
+                    continue
+                if z <= 0 or z > 5.0:
+                    continue
+
+                # rgb는 float로 packed된 uint32
+                rgb_f = struct.unpack_from('<f', raw, base + orgb)[0]
+                rgb_i = struct.unpack('<I', struct.pack('<f', rgb_f))[0]
+                r = (rgb_i >> 16) & 0xFF
+                g = (rgb_i >> 8)  & 0xFF
+                b =  rgb_i        & 0xFF
+
+                xs.append(round(float(x), 4))
+                ys.append(round(float(y), 4))
+                zs.append(round(float(z), 4))
+                rs.append(int(r))
+                gs.append(int(g))
+                bs.append(int(b))
+
+            if not xs:
+                self.get_logger().warn("[PC] 유효 포인트 없음")
+                return
+
+            self._pc_ref.set({
+                "x": xs, "y": ys, "z": zs,
+                "r": rs, "g": gs, "b": bs,
+                "count": len(xs),
+                "timestamp": int(now * 1000),
+            })
+            self.get_logger().info(f"[PC] {len(xs)}pts → Firebase")
+
+        except Exception as e:
+            self.get_logger().error(f"[PC] error: {e}")
 
     # ── 콜백: 로봇 상태 → Firebase ────────────────────────
     def _cb_step(self, msg: Int32):
