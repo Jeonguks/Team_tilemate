@@ -92,6 +92,17 @@ class FirebaseBridgeNode(Node):
         )
         self.get_logger().info("Subscribed: /camera/camera/depth/image_rect_raw")
 
+        # ── Color Image 구독 (/camera/camera/color/image_raw) ──
+        self._color_ref = db.reference("/color_image")
+        self._last_color_update = 0.0
+        self.create_subscription(
+            Image,
+            "/camera/camera/color/image_raw",
+            self._cb_color_image,
+            10
+        )
+        self.get_logger().info("Subscribed: /camera/camera/color/image_raw")
+
         # ── PointCloud2 구독 (/camera/camera/depth/color/points) ──
         self._pc_ref = db.reference("/point_cloud")
         self._last_pc_update = 0.0
@@ -458,6 +469,63 @@ class FirebaseBridgeNode(Node):
 
         except Exception as e:
             self.get_logger().error(f"[DEPTH] error: {e}")
+
+    # ── 콜백: Color Image → Firebase ────────────────────────
+    def _cb_color_image(self, msg: Image):
+        now = time.time()
+        if now - self._last_color_update < 0.5:   # 2fps 상한
+            return
+        self._last_color_update = now
+
+        try:
+            import base64, zlib, struct
+
+            w, h     = msg.width, msg.height
+            encoding = msg.encoding
+            raw      = bytes(msg.data)
+
+            # 다운샘플 (최대 640x480)
+            scale = max(1, max(w // 640, h // 480))
+            dw = w // scale
+            dh = h // scale
+
+            ch = 4 if encoding == 'rgba8' else 3
+            arr = np.frombuffer(raw, dtype=np.uint8).reshape(h, w, ch)
+            if encoding == 'bgr8':
+                arr = arr[:, :, ::-1]   # BGR → RGB
+            ds = arr[::scale, ::scale, :3][:dh, :dw]
+            alpha = np.full((dh, dw, 1), 255, dtype=np.uint8)
+            rgba_arr = np.concatenate([ds, alpha], axis=2)
+
+            # PNG 인코딩
+            def make_chunk(ctype, data):
+                crc = zlib.crc32(ctype + data) & 0xFFFFFFFF
+                return struct.pack('>I', len(data)) + ctype + data + struct.pack('>I', crc)
+
+            ihdr = struct.pack('>IIBBBBB', dw, dh, 8, 6, 0, 0, 0)
+            rows = bytearray()
+            for row in range(dh):
+                rows.append(0)
+                rows.extend(rgba_arr[row].tobytes())
+            idat = zlib.compress(bytes(rows), 1)
+
+            png = (b'\x89PNG\r\n\x1a\n'
+                   + make_chunk(b'IHDR', ihdr)
+                   + make_chunk(b'IDAT', idat)
+                   + make_chunk(b'IEND', b''))
+
+            b64 = base64.b64encode(png).decode('ascii')
+
+            self._color_ref.set({
+                "image":     b64,
+                "width":     dw,
+                "height":    dh,
+                "timestamp": int(now * 1000),
+            })
+            self.get_logger().info(f"[COLOR] {dw}x{dh} png={len(png)//1024}KB → Firebase")
+
+        except Exception as e:
+            self.get_logger().error(f"[COLOR] error: {e}")
 
     # ── 콜백: PointCloud2 → Firebase ────────────────────────
     def _cb_point_cloud(self, msg: PointCloud2):

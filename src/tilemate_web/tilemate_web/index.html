@@ -413,53 +413,94 @@
             <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 20px; border-bottom:1px solid #1a3a5f; flex-shrink:0; background:#0d1525;">
                 <div style="display:flex; align-items:center; gap:10px;">
                     <span style="background:#c62828; color:#fff; font-size:0.72em; font-weight:bold; padding:2px 8px; border-radius:10px; letter-spacing:1px;">ADMIN</span>
-                    <span style="color:#90caf9; font-size:1.1em; font-weight:bold;">🎨 깊이 이미지 뷰어</span>
+                    <span style="color:#90caf9; font-size:1.1em; font-weight:bold;">📷 카메라 뷰어</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <span id="pc-status" style="font-size:0.82em; color:#888; background:#111a2e; padding:3px 10px; border-radius:20px; border:1px solid #1e3a5f;">● 대기 중</span>
-                    <span id="pc-depth-range" style="font-size:0.82em; color:#42a5f5; font-weight:bold;"></span>
-                    <span id="pc-fps" style="font-size:0.82em; color:#66bb6a; font-weight:bold;"></span>
-                    <button id="pc-subscribe-btn" onclick="toggleDepthSubscription()" style="padding:5px 12px; font-size:0.88em; background:#1565c0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; flex:unset;">수신 시작</button>
                     <button onclick="closeDepthViewer()" style="background:transparent; color:#90caf9; border:1px solid #1565c0; padding:5px 12px; border-radius:6px; cursor:pointer; font-size:0.88em; font-weight:bold; flex:unset;">← 돌아가기</button>
                 </div>
             </div>
 
-            <!-- 깊이 이미지 영역 (위 절반) -->
-            <div style="flex:1; background:#060d1a; display:flex; align-items:center; justify-content:center; overflow:hidden; border-bottom:1px solid #1a3a5f; position:relative;">
-                <div id="pc-placeholder" style="display:flex; flex-direction:column; align-items:center; gap:10px; color:#445;">
-                    <div style="font-size:2.5em;">🎨</div>
-                    <div style="color:#556;">Firebase에서 깊이 이미지 수신 대기 중...</div>
-                    <div style="font-size:0.82em; color:#445;">/camera/camera/depth/image_rect_raw</div>
-                </div>
-                <canvas id="depth-canvas" style="display:none; max-width:100%; max-height:100%; image-rendering:pixelated;"></canvas>
-            </div>
+            <!-- 본문: 좌우 분할 -->
+            <div style="flex:1; display:flex; overflow:hidden; min-height:0;">
 
-            <!-- 깊이 범례 -->
-            <div id="depth-legend" style="display:none; align-items:center; gap:8px; font-size:0.8em; color:#778; background:#0d1525; border-bottom:1px solid #1a3a5f; padding:5px 16px; flex-shrink:0;">
-                <span id="legend-min" style="font-weight:bold; color:#42a5f5;"></span>
-                <div style="flex:1; height:10px; border-radius:4px; background:linear-gradient(to right,#0000ff,#00ff00,#ff0000); border:1px solid #334;"></div>
-                <span id="legend-max" style="font-weight:bold; color:#ef5350;"></span>
-                <span style="color:#556;">← 가까움 | 멀음 →</span>
-            </div>
-
-            <!-- 포인트 클라우드 헤더 -->
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px; background:#0d1525; border-bottom:1px solid #1a3a5f; flex-shrink:0;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="color:#90caf9; font-size:1em; font-weight:bold;">☁️ 포인트 클라우드</span>
-                    <span id="pc3d-status" style="font-size:0.82em; color:#888; background:#111a2e; padding:3px 10px; border-radius:20px; border:1px solid #1e3a5f;">● 대기 중</span>
-                    <span id="pc3d-count" style="font-size:0.82em; color:#66bb6a; font-weight:bold;"></span>
+                <!-- ── 왼쪽: 컬러 카메라 (크게) ── -->
+                <div style="flex:1.2; display:flex; flex-direction:column; border-right:2px solid #1a3a5f; min-width:0;">
+                    <!-- 컬러 카메라 헤더 -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background:#0d1525; border-bottom:1px solid #1a3a5f; flex-shrink:0;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#a5d6a7; font-size:1em; font-weight:bold;">📷 컬러 카메라</span>
+                            <span id="color-status" style="font-size:0.82em; color:#888; background:#111a2e; padding:3px 10px; border-radius:20px; border:1px solid #1e3a5f;">● 대기 중</span>
+                            <span id="color-fps" style="font-size:0.82em; color:#66bb6a; font-weight:bold;"></span>
+                        </div>
+                        <button id="color-subscribe-btn" onclick="toggleColorSubscription()" style="padding:5px 12px; font-size:0.88em; background:#1565c0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; flex:unset;">수신 시작</button>
+                    </div>
+                    <!-- 컬러 이미지 영역 -->
+                    <div style="flex:1; background:#060d1a; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; min-height:0;">
+                        <div id="color-placeholder" style="display:flex; flex-direction:column; align-items:center; gap:10px; color:#445;">
+                            <div style="font-size:3em;">📷</div>
+                            <div style="color:#556;">Firebase에서 컬러 이미지 수신 대기 중...</div>
+                            <div style="font-size:0.82em; color:#445;">/camera/camera/color/image_raw</div>
+                        </div>
+                        <canvas id="color-canvas" style="display:none; max-width:100%; max-height:100%; object-fit:contain;"></canvas>
+                    </div>
+                    <!-- 컬러 카메라 하단 정보 -->
+                    <div id="color-info-bar" style="display:none; padding:4px 16px; background:#0d1525; border-top:1px solid #1a3a5f; flex-shrink:0; font-size:0.78em; color:#778;">
+                        <span id="color-resolution"></span>
+                    </div>
                 </div>
-                <button id="pc3d-subscribe-btn" onclick="togglePCSubscription()" style="padding:5px 12px; font-size:0.88em; background:#1565c0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; flex:unset;">수신 시작</button>
-            </div>
 
-            <!-- 포인트 클라우드 영역 (아래 절반) -->
-            <div style="flex:1; position:relative; background:#060d1a; overflow:hidden;">
-                <div id="pc3d-placeholder" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:#445;">
-                    <div style="font-size:2.5em;">☁️</div>
-                    <div style="color:#556;">Firebase에서 포인트 클라우드 수신 대기 중...</div>
-                    <div style="font-size:0.82em; color:#445;">/camera/camera/depth/color/points</div>
+                <!-- ── 오른쪽: 깊이 이미지 + 포인트 클라우드 (위아래) ── -->
+                <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+
+                    <!-- 깊이 이미지 헤더 -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background:#0d1525; border-bottom:1px solid #1a3a5f; flex-shrink:0;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#90caf9; font-size:1em; font-weight:bold;">🎨 깊이 이미지</span>
+                            <span id="pc-status" style="font-size:0.82em; color:#888; background:#111a2e; padding:3px 10px; border-radius:20px; border:1px solid #1e3a5f;">● 대기 중</span>
+                            <span id="pc-depth-range" style="font-size:0.78em; color:#42a5f5; font-weight:bold;"></span>
+                            <span id="pc-fps" style="font-size:0.82em; color:#66bb6a; font-weight:bold;"></span>
+                        </div>
+                        <button id="pc-subscribe-btn" onclick="toggleDepthSubscription()" style="padding:5px 12px; font-size:0.88em; background:#1565c0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; flex:unset;">수신 시작</button>
+                    </div>
+
+                    <!-- 깊이 이미지 영역 -->
+                    <div style="flex:1; background:#060d1a; display:flex; align-items:center; justify-content:center; overflow:hidden; border-bottom:1px solid #1a3a5f; position:relative; min-height:0;">
+                        <div id="pc-placeholder" style="display:flex; flex-direction:column; align-items:center; gap:10px; color:#445;">
+                            <div style="font-size:2.5em;">🎨</div>
+                            <div style="color:#556;">깊이 이미지 수신 대기 중...</div>
+                            <div style="font-size:0.82em; color:#445;">/camera/camera/depth/image_rect_raw</div>
+                        </div>
+                        <canvas id="depth-canvas" style="display:none; max-width:100%; max-height:100%; image-rendering:pixelated;"></canvas>
+                    </div>
+
+                    <!-- 깊이 범례 -->
+                    <div id="depth-legend" style="display:none; align-items:center; gap:8px; font-size:0.78em; color:#778; background:#0d1525; border-bottom:1px solid #1a3a5f; padding:4px 16px; flex-shrink:0;">
+                        <span id="legend-min" style="font-weight:bold; color:#42a5f5;"></span>
+                        <div style="flex:1; height:8px; border-radius:4px; background:linear-gradient(to right,#0000ff,#00ff00,#ff0000); border:1px solid #334;"></div>
+                        <span id="legend-max" style="font-weight:bold; color:#ef5350;"></span>
+                        <span style="color:#556;">가까움 ← → 멀음</span>
+                    </div>
+
+                    <!-- 포인트 클라우드 헤더 -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px; background:#0d1525; border-bottom:1px solid #1a3a5f; flex-shrink:0;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="color:#90caf9; font-size:1em; font-weight:bold;">☁️ 포인트 클라우드</span>
+                            <span id="pc3d-status" style="font-size:0.82em; color:#888; background:#111a2e; padding:3px 10px; border-radius:20px; border:1px solid #1e3a5f;">● 대기 중</span>
+                            <span id="pc3d-count" style="font-size:0.82em; color:#66bb6a; font-weight:bold;"></span>
+                        </div>
+                        <button id="pc3d-subscribe-btn" onclick="togglePCSubscription()" style="padding:5px 12px; font-size:0.88em; background:#1565c0; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; flex:unset;">수신 시작</button>
+                    </div>
+
+                    <!-- 포인트 클라우드 영역 -->
+                    <div style="flex:1; position:relative; background:#060d1a; overflow:hidden; min-height:0;">
+                        <div id="pc3d-placeholder" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:#445;">
+                            <div style="font-size:2.5em;">☁️</div>
+                            <div style="color:#556;">포인트 클라우드 수신 대기 중...</div>
+                            <div style="font-size:0.82em; color:#445;">/camera/camera/depth/color/points</div>
+                        </div>
+                        <div id="pc3d-container" style="width:100%; height:100%;"></div>
+                    </div>
                 </div>
-                <div id="pc3d-container" style="width:100%; height:100%;"></div>
             </div>
         </div>
     </div>
@@ -1048,8 +1089,47 @@
     });
 
     let depthSubscribing = false; let depthFirebaseListener = null; let depthFpsInterval = null; let depthFrameCount = 0;
+    
+    /* ── Color Camera ── */
+    let colorSubscribing = false; let colorFirebaseListener = null; let colorFpsInterval = null; let colorFrameCount = 0;
+    function toggleColorSubscription() { if (colorSubscribing) stopColorSubscription(); else startColorSubscription(); }
+    function startColorSubscription() {
+        colorSubscribing = true;
+        document.getElementById('color-subscribe-btn').innerText = '수신 중지';
+        document.getElementById('color-subscribe-btn').style.background = '#c62828';
+        document.getElementById('color-status').innerHTML = '<span style="color:#4caf50;">● 수신 중</span>';
+        colorFpsInterval = setInterval(() => { document.getElementById('color-fps').innerText = `${colorFrameCount} FPS`; colorFrameCount = 0; }, 1000);
+        colorFirebaseListener = database.ref('color_image').on('value', (snap) => {
+            const data = snap.val(); if (!data || !data.image) return;
+            renderColorImage(data); colorFrameCount++;
+        });
+    }
+    function stopColorSubscription() {
+        if (colorFirebaseListener) database.ref('color_image').off('value', colorFirebaseListener);
+        if (colorFpsInterval) clearInterval(colorFpsInterval);
+        colorSubscribing = false;
+        document.getElementById('color-subscribe-btn').innerText = '수신 시작';
+        document.getElementById('color-subscribe-btn').style.background = '#1565c0';
+        document.getElementById('color-status').innerHTML = '● 대기 중';
+        document.getElementById('color-fps').innerText = '';
+    }
+    function renderColorImage(data) {
+        const canvas = document.getElementById('color-canvas');
+        const placeholder = document.getElementById('color-placeholder');
+        const infoBar = document.getElementById('color-info-bar');
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = data.width; canvas.height = data.height;
+            const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
+            placeholder.style.display = 'none';
+            canvas.style.display = 'block';
+            infoBar.style.display = 'flex';
+            document.getElementById('color-resolution').innerText = `해상도: ${data.width} × ${data.height}`;
+        };
+        img.src = 'data:image/png;base64,' + data.image;
+    }
     function openPointCloudViewer() { document.getElementById('pointcloud-popup').classList.add('show'); }
-    function closeDepthViewer() { document.getElementById('pointcloud-popup').classList.remove('show'); stopDepthSubscription(); stopPCSubscription(); }
+    function closeDepthViewer() { document.getElementById('pointcloud-popup').classList.remove('show'); stopDepthSubscription(); stopPCSubscription(); stopColorSubscription(); }
     function toggleDepthSubscription() { if (depthSubscribing) stopDepthSubscription(); else startDepthSubscription(); }
     function startDepthSubscription() {
         depthSubscribing = true;
