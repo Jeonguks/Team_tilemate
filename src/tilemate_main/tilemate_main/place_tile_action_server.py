@@ -501,6 +501,7 @@ class PlaceTileActionServer(Node):
             mwait,
             wait,
             get_current_posx,
+            DR_TOOL,
             DR_BASE,
             movel,
             posx,
@@ -516,7 +517,7 @@ class PlaceTileActionServer(Node):
                 cur[4],
                 cur[5],
             ]
-            movel(posx(target), ref=DR_BASE, vel=30, acc=30)
+            movel(posx(target), ref=DR_TOOL, vel=30, acc=30)
             mwait()
 
         if self.check_abort(goal_handle):
@@ -536,13 +537,12 @@ class PlaceTileActionServer(Node):
         pre_place = self.get_pre_place_pos(placement_index)
 
         self.publish_feedback(goal_handle, "approach", None, 0.0, 0.15)
-        movel(pre_place, vel=VELOCITY, acc=ACC)
+        movel(pre_place, ref=DR_BASE, vel=VELOCITY, acc=ACC)
         mwait()
 
         if self.check_abort(goal_handle):
             return (False, 0.0, "canceled")
 
-        # 3) 접근 하강
         self.publish_feedback(goal_handle, "approach", None, 0.0, 0.20)
         move_relative(0.0, 0.0, -100.0)
 
