@@ -89,8 +89,6 @@ class TaskManagerNode(Node):
         # 지금 boilerplate는 inspect가 /tile/step=5, compact가 /tile/step=6/7를 publish하는 구조라
         # 별도 step 구독이 필요 없다. (이미 /tile/step 하나로 처리됨)
 
-        self.get_logger().info("TaskManagerNode ready")
-
     # -----------------
     # publish helpers
     # -----------------

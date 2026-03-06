@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
+import time
+
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer, ActionClient, GoalResponse, CancelResponse
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 
-from tilemate_msgs.action import TaskJob, PickTile, PlaceTile, InspectTile, CompactTile
+from std_msgs.msg import String
+from std_srvs.srv import Trigger
+from action_msgs.msg import GoalStatus
+
+from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile
+from tilemate_main.robot_config import RobotConfig
+
 
 class TaskManagerNode(Node):
+
     # ----------------------------
     # overall step enum
     # ----------------------------
@@ -30,10 +39,19 @@ class TaskManagerNode(Node):
 
         self.cb_group = ReentrantCallbackGroup()
 
+        # ----------------------------
+        # runtime state
+        # ----------------------------
+        self.active_job_goal = None
+        self.active_sub_goal = None
+        self.kill_requested = False
+
+        # ----------------------------
         # 상위 작업 액션 서버
+        # ----------------------------
         self._action_server = ActionServer(
             self,
-            TaskJob,
+            ExecuteJob,
             "task/run_job",
             execute_callback=self.execute_callback,
             goal_callback=self.goal_callback,
@@ -41,21 +59,97 @@ class TaskManagerNode(Node):
             callback_group=self.cb_group,
         )
 
-        # 하위 액션 클라이언트
-        self.pick_client = ActionClient(
-            self, PickTile, "tile/pick", callback_group=self.cb_group
-        )
-        self.place_client = ActionClient(
-            self, PlaceTile, "tile/place_press", callback_group=self.cb_group
-        )
-        self.inspect_client = ActionClient(
-            self, InspectTile, "tile/inspect", callback_group=self.cb_group
-        )
-        self.compact_client = ActionClient(
-            self, CompactTile, "tile/compact", callback_group=self.cb_group
+        # ----------------------------
+        # 디버그/긴급 정지 서비스
+        # ----------------------------
+        self._kill_srv = self.create_service(
+            Trigger,
+            "/kill",
+            self.kill_service_callback,
+            callback_group=self.cb_group,
         )
 
-        self.get_logger().info("TaskManagerNode ready")
+        # ----------------------------
+        # stop 호환용 토픽
+        # ----------------------------
+        self.pub_robot_cmd = self.create_publisher(String, "/robot/command", 10)
+
+        # ----------------------------
+        # 하위 액션 클라이언트
+        # ----------------------------
+        robot_ns = f"/{RobotConfig.robot_id}"
+
+        self.pick_client = ActionClient(
+            self,
+            PickTile,
+            f"{robot_ns}/tile/pick",
+            callback_group=self.cb_group,
+        )
+        self.place_client = ActionClient(
+            self,
+            PlaceTile,
+            f"{robot_ns}/tile/place_press",
+            callback_group=self.cb_group,
+        )
+
+        self.get_logger().info("\033[94m [1/4] [TASK MANAGER] initialize Done!\033[0m")
+        self.get_logger().info(f"pick action  : {robot_ns}/tile/pick")
+        self.get_logger().info(f"place action : {robot_ns}/tile/place_press")
+        self.get_logger().info("kill service  : /kill")
+
+
+
+    # --------------------------------------------------
+    # helpers
+    # --------------------------------------------------
+    def _publish_stop(self, repeat: int = 3, interval: float = 0.05):
+        msg = String()
+        msg.data = "stop"
+        for i in range(repeat):
+            self.pub_robot_cmd.publish(msg)
+            if i < repeat - 1:
+                time.sleep(interval)
+
+    def _cancel_active_subgoal(self):
+        if self.active_sub_goal is None:
+            self.get_logger().warn("[KILL] no active sub goal")
+            return
+
+        try:
+            self.get_logger().warn("[KILL] cancel active sub goal requested")
+            fut = self.active_sub_goal.cancel_goal_async()
+            fut.add_done_callback(self._on_cancel_subgoal_done)
+        except Exception as e:
+            self.get_logger().error(f"[KILL] sub goal cancel failed: {e}")
+
+    def _on_cancel_subgoal_done(self, future):
+        try:
+            _ = future.result()
+            self.get_logger().warn("[KILL] sub goal cancel response received")
+        except Exception as e:
+            self.get_logger().error(f"[KILL] sub goal cancel response error: {e}")
+
+    # --------------------------------------------------
+    # /kill service
+    # --------------------------------------------------
+    def kill_service_callback(self, request, response):
+        del request
+
+        self.get_logger().warn("====================================")
+        self.get_logger().warn("[KILL] /kill service called")
+        self.get_logger().warn("====================================")
+
+        self.kill_requested = True
+
+        # 현재 sub action 취소 요청
+        self._cancel_active_subgoal()
+
+        # 하위 로봇 정지 체계도 함께 트리거
+        self._publish_stop()
+
+        response.success = True
+        response.message = "kill requested: active subgoal cancel + /robot/command stop published"
+        return response
 
     # --------------------------------------------------
     # goal / cancel
@@ -64,7 +158,7 @@ class TaskManagerNode(Node):
         n = len(goal_request.design_layout)
 
         if n <= 0:
-            self.get_logger().warn("Reject: design_layout is empty")
+            self.get_logger().warn("Reject: design_layout empty")
             return GoalResponse.REJECT
 
         if goal_request.completed_jobs < 0:
@@ -87,45 +181,28 @@ class TaskManagerNode(Node):
             f"Goal accepted: token={goal_request.token}, "
             f"tiles={n}, resume={goal_request.is_resume}, "
             f"completed_jobs={goal_request.completed_jobs}, "
-            f"current_tile_index={goal_request.current_tile_index}, "
-            f"current_step={goal_request.current_step}"
+            f"current_step={goal_request.current_step}, "
+            f"current_tile_index={goal_request.current_tile_index}"
         )
         return GoalResponse.ACCEPT
 
     def cancel_callback(self, goal_handle):
-        self.get_logger().warn("Cancel request received")
+        self.get_logger().warn("Cancel request received on /task/run_job")
+        self.kill_requested = True
+        self._cancel_active_subgoal()
+        self._publish_stop()
         return CancelResponse.ACCEPT
-
-    # --------------------------------------------------
-    # feedback helper
-    # --------------------------------------------------
-    def publish_feedback(
-        self,
-        goal_handle,
-        overall_step: int,
-        overall_progress: float,
-        tile_index: int,
-        tile_type: int,
-        tile_step: int,
-        tile_progress: float,
-        state: str,
-    ):
-        fb = TaskJob.Feedback()
-        fb.overall_step = int(overall_step)
-        fb.overall_progress = float(overall_progress)
-        fb.tile_index = int(tile_index)
-        fb.tile_type = int(tile_type)
-        fb.tile_step = int(tile_step)
-        fb.tile_progress = float(tile_progress)
-        fb.state = str(state)
-        goal_handle.publish_feedback(fb)
 
     # --------------------------------------------------
     # main execute
     # --------------------------------------------------
     async def execute_callback(self, goal_handle):
-        result = TaskJob.Result()
+        result = ExecuteJob.Result()
         req = goal_handle.request
+
+        self.active_job_goal = goal_handle
+        self.active_sub_goal = None
+        self.kill_requested = False
 
         try:
             layout = list(req.design_layout)
@@ -149,9 +226,17 @@ class TaskManagerNode(Node):
                 result.message = "already_finished"
                 return result
 
-            # 전체 타일 루프
             for tile_index in range(start_tile_index, total_tiles):
+
+                if self.kill_requested:
+                    self.get_logger().warn("[TASK] killed before tile start")
+                    goal_handle.abort()
+                    result.success = False
+                    result.message = "killed"
+                    return result
+
                 if goal_handle.is_cancel_requested:
+                    self.get_logger().warn("[TASK] canceled before tile start")
                     goal_handle.canceled()
                     result.success = False
                     result.message = "canceled"
@@ -159,21 +244,18 @@ class TaskManagerNode(Node):
 
                 tile_type = int(layout[tile_index])
 
-                # resume 시작 타일이면 current_step부터,
-                # 이후 타일이면 처음부터
                 if req.is_resume and tile_index == start_tile_index:
                     tile_step_start = start_step
                 else:
                     tile_step_start = self.TILE_STEP_IDLE
 
                 self.get_logger().info(
-                    f"[TASK] tile_index={tile_index}, tile_type={tile_type}, "
-                    f"tile_step_start={tile_step_start}"
+                    f"[TASK] tile_index={tile_index}, "
+                    f"tile_type={tile_type}, tile_step_start={tile_step_start}"
                 )
 
                 ok, msg = await self.run_single_tile(
                     goal_handle=goal_handle,
-                    token=req.token,
                     tile_index=tile_index,
                     tile_type=tile_type,
                     total_tiles=total_tiles,
@@ -181,27 +263,22 @@ class TaskManagerNode(Node):
                 )
 
                 if not ok:
-                    if goal_handle.is_cancel_requested:
+                    if self.kill_requested:
+                        self.get_logger().warn(f"[TASK] aborted by kill: {msg}")
+                        goal_handle.abort()
+                        result.success = False
+                        result.message = f"killed:{msg}"
+                    elif goal_handle.is_cancel_requested:
+                        self.get_logger().warn(f"[TASK] canceled: {msg}")
                         goal_handle.canceled()
                         result.success = False
                         result.message = "canceled"
                     else:
+                        self.get_logger().error(f"[TASK] failed: {msg}")
                         goal_handle.abort()
                         result.success = False
                         result.message = msg
                     return result
-
-            # 완료
-            self.publish_feedback(
-                goal_handle=goal_handle,
-                overall_step=self.OVERALL_FINISHED,
-                overall_progress=1.0,
-                tile_index=total_tiles - 1,
-                tile_type=int(layout[-1]),
-                tile_step=self.TILE_STEP_DONE,
-                tile_progress=1.0,
-                state="finished",
-            )
 
             goal_handle.succeed()
             result.success = True
@@ -210,10 +287,18 @@ class TaskManagerNode(Node):
 
         except Exception as e:
             self.get_logger().error(f"[TASK] execute failed: {e}")
-            goal_handle.abort()
+            try:
+                goal_handle.abort()
+            except Exception:
+                pass
             result.success = False
             result.message = f"exception:{e}"
             return result
+
+        finally:
+            self.active_job_goal = None
+            self.active_sub_goal = None
+            self.kill_requested = False
 
     # --------------------------------------------------
     # run one tile
@@ -221,31 +306,35 @@ class TaskManagerNode(Node):
     async def run_single_tile(
         self,
         goal_handle,
-        token: str,
-        tile_index: int,
-        tile_type: int,
-        total_tiles: int,
-        tile_step_start: int,
+        tile_index,
+        tile_type,
+        total_tiles,
+        tile_step_start,
     ):
-        # 진행률 계산 helper
-        def overall_progress_of(tile_prog: float) -> float:
-            return min((tile_index + tile_prog) / max(total_tiles, 1), 1.0)
+        del total_tiles
 
         # --------------------------
-        # 1) PLACE
+        # 1 PICK
         # --------------------------
-        if tile_step_start <= self.TILE_STEP_PLACE:
-            self.publish_feedback(
+        if tile_step_start <= self.TILE_STEP_PICK:
+            ok, msg = await self.call_pick_tile(
                 goal_handle=goal_handle,
-                overall_step=self.OVERALL_TILE_WORK,
-                overall_progress=overall_progress_of(0.10),
                 tile_index=tile_index,
                 tile_type=tile_type,
-                tile_step=self.TILE_STEP_PLACE,
-                tile_progress=0.10,
-                state="place_start",
             )
+            if not ok:
+                return False, f"pick_failed:{msg}"
 
+        if self.kill_requested:
+            return False, "killed_after_pick"
+
+        if goal_handle.is_cancel_requested:
+            return False, "canceled_after_pick"
+
+        # --------------------------
+        # 2 PLACE
+        # --------------------------
+        if tile_step_start <= self.TILE_STEP_PLACE:
             ok, msg = await self.call_place_tile(
                 goal_handle=goal_handle,
                 tile_index=tile_index,
@@ -254,242 +343,125 @@ class TaskManagerNode(Node):
             if not ok:
                 return False, f"place_failed:{msg}"
 
-        if goal_handle.is_cancel_requested:
-            return False, "canceled"
-
-        # --------------------------
-        # 2) INSPECT
-        # --------------------------
-        if tile_step_start <= self.TILE_STEP_INSPECT:
-            self.publish_feedback(
-                goal_handle=goal_handle,
-                overall_step=self.OVERALL_TILE_WORK,
-                overall_progress=overall_progress_of(0.55),
-                tile_index=tile_index,
-                tile_type=tile_type,
-                tile_step=self.TILE_STEP_INSPECT,
-                tile_progress=0.55,
-                state="inspect_start",
-            )
-
-            ok, msg = await self.call_inspect_tile(
-                goal_handle=goal_handle,
-                tile_index=tile_index,
-                tile_type=tile_type,
-            )
-            if not ok:
-                return False, f"inspect_failed:{msg}"
+        if self.kill_requested:
+            return False, "killed_after_place"
 
         if goal_handle.is_cancel_requested:
-            return False, "canceled"
+            return False, "canceled_after_place"
 
-        # --------------------------
-        # 3) COMPACT
-        # --------------------------
-        if tile_step_start <= self.TILE_STEP_COMPACT:
-            self.publish_feedback(
-                goal_handle=goal_handle,
-                overall_step=self.OVERALL_TILE_WORK,
-                overall_progress=overall_progress_of(0.80),
-                tile_index=tile_index,
-                tile_type=tile_type,
-                tile_step=self.TILE_STEP_COMPACT,
-                tile_progress=0.80,
-                state="compact_start",
-            )
-
-            ok, msg = await self.call_compact_tile(
-                goal_handle=goal_handle,
-                tile_index=tile_index,
-                tile_type=tile_type,
-            )
-            if not ok:
-                return False, f"compact_failed:{msg}"
-
-        # tile done
-        self.publish_feedback(
-            goal_handle=goal_handle,
-            overall_step=self.OVERALL_TILE_WORK,
-            overall_progress=overall_progress_of(1.0),
-            tile_index=tile_index,
-            tile_type=tile_type,
-            tile_step=self.TILE_STEP_DONE,
-            tile_progress=1.0,
-            state="tile_done",
-        )
         return True, "ok"
 
     # --------------------------------------------------
-    # sub action calls
+    # pick action
     # --------------------------------------------------
-    async def call_place_tile(self, goal_handle, tile_index: int, tile_type: int):
+    async def call_pick_tile(self, goal_handle, tile_index, tile_type):
+
+        if self.kill_requested:
+            return False, "killed_before_pick"
+
+        if not self.pick_client.wait_for_server(timeout_sec=2.0):
+            return False, "pick_action_server_unavailable"
+
+        goal = PickTile.Goal()
+        goal.tile_index = tile_index + 1
+        goal.tile_type = tile_type
+
+        send_future = self.pick_client.send_goal_async(goal)
+        sub_goal_handle = await send_future
+        self.active_sub_goal = sub_goal_handle
+
+        if not sub_goal_handle.accepted:
+            self.active_sub_goal = None
+            return False, "pick_goal_rejected"
+
+        if self.kill_requested:
+            try:
+                await sub_goal_handle.cancel_goal_async()
+            except Exception:
+                pass
+            self.active_sub_goal = None
+            return False, "killed_during_pick_start"
+
+        if goal_handle.is_cancel_requested:
+            try:
+                await sub_goal_handle.cancel_goal_async()
+            except Exception:
+                pass
+            self.active_sub_goal = None
+            return False, "canceled"
+
+        result_future = sub_goal_handle.get_result_async()
+        result_wrap = await result_future
+        self.active_sub_goal = None
+
+        if result_wrap.status == GoalStatus.STATUS_CANCELED:
+            if self.kill_requested:
+                return False, "pick_canceled_by_kill"
+            return False, "pick_canceled"
+
+        result = result_wrap.result
+
+        if not result.success:
+            return False, result.message
+
+        return True, result.message
+
+    # --------------------------------------------------
+    # place action
+    # --------------------------------------------------
+    async def call_place_tile(self, goal_handle, tile_index, tile_type):
+        del tile_type
+
+        if self.kill_requested:
+            return False, "killed_before_place"
+
         if not self.place_client.wait_for_server(timeout_sec=2.0):
             return False, "place_action_server_unavailable"
 
         goal = PlaceTile.Goal()
-
-        # 예시: tile_type에 따라 placement index나 힘 파라미터를 다르게 줄 수 있음
         goal.placement_index = tile_index + 1
-        goal.max_press_force = 15.0 if tile_type == 1 else 20.0
-        goal.target_press_depth = 5.0 if tile_type == 1 else 6.0
+        goal.max_press_force = 15.0
+        goal.target_press_depth = 5.0
 
-        send_future = self.place_client.send_goal_async(
-            goal,
-            feedback_callback=lambda fb: self._fb_place(
-                parent_goal_handle=goal_handle,
-                tile_index=tile_index,
-                tile_type=tile_type,
-                fb_msg=fb,
-            ),
-        )
+        send_future = self.place_client.send_goal_async(goal)
         sub_goal_handle = await send_future
+        self.active_sub_goal = sub_goal_handle
 
         if not sub_goal_handle.accepted:
+            self.active_sub_goal = None
             return False, "place_goal_rejected"
 
-        if goal_handle.is_cancel_requested:
+        if self.kill_requested:
             try:
                 await sub_goal_handle.cancel_goal_async()
             except Exception:
                 pass
-            return False, "canceled"
-
-        result_future = sub_goal_handle.get_result_async()
-        result_wrap = await result_future
-        result = result_wrap.result
-
-        if not result.success:
-            return False, result.message
-
-        return True, result.message
-
-    async def call_inspect_tile(self, goal_handle, tile_index: int, tile_type: int):
-        if not self.inspect_client.wait_for_server(timeout_sec=2.0):
-            return False, "inspect_action_server_unavailable"
-
-        goal = InspectTile.Goal()
-        goal.tile_index = tile_index + 1
-        goal.tile_type = tile_type
-
-        send_future = self.inspect_client.send_goal_async(
-            goal,
-            feedback_callback=lambda fb: self._fb_inspect(
-                parent_goal_handle=goal_handle,
-                tile_index=tile_index,
-                tile_type=tile_type,
-                fb_msg=fb,
-            ),
-        )
-        sub_goal_handle = await send_future
-
-        if not sub_goal_handle.accepted:
-            return False, "inspect_goal_rejected"
+            self.active_sub_goal = None
+            return False, "killed_during_place_start"
 
         if goal_handle.is_cancel_requested:
             try:
                 await sub_goal_handle.cancel_goal_async()
             except Exception:
                 pass
+            self.active_sub_goal = None
             return False, "canceled"
 
         result_future = sub_goal_handle.get_result_async()
         result_wrap = await result_future
+        self.active_sub_goal = None
+
+        if result_wrap.status == GoalStatus.STATUS_CANCELED:
+            if self.kill_requested:
+                return False, "place_canceled_by_kill"
+            return False, "place_canceled"
+
         result = result_wrap.result
 
         if not result.success:
             return False, result.message
 
         return True, result.message
-
-    async def call_compact_tile(self, goal_handle, tile_index: int, tile_type: int):
-        if not self.compact_client.wait_for_server(timeout_sec=2.0):
-            return False, "compact_action_server_unavailable"
-
-        goal = CompactTile.Goal()
-        goal.tile_index = tile_index + 1
-        goal.tile_type = tile_type
-
-        send_future = self.compact_client.send_goal_async(
-            goal,
-            feedback_callback=lambda fb: self._fb_compact(
-                parent_goal_handle=goal_handle,
-                tile_index=tile_index,
-                tile_type=tile_type,
-                fb_msg=fb,
-            ),
-        )
-        sub_goal_handle = await send_future
-
-        if not sub_goal_handle.accepted:
-            return False, "compact_goal_rejected"
-
-        if goal_handle.is_cancel_requested:
-            try:
-                await sub_goal_handle.cancel_goal_async()
-            except Exception:
-                pass
-            return False, "canceled"
-
-        result_future = sub_goal_handle.get_result_async()
-        result_wrap = await result_future
-        result = result_wrap.result
-
-        if not result.success:
-            return False, result.message
-
-        return True, result.message
-
-    # --------------------------------------------------
-    # sub feedback mapping
-    # --------------------------------------------------
-    def _fb_place(self, parent_goal_handle, tile_index: int, tile_type: int, fb_msg):
-        fb = fb_msg.feedback
-
-        state = getattr(fb, "state", "placing")
-        tile_progress = float(getattr(fb, "progress", 0.3))
-
-        self.publish_feedback(
-            goal_handle=parent_goal_handle,
-            overall_step=self.OVERALL_TILE_WORK,
-            overall_progress=0.0,   # 세부 계산은 execute에서 이미 대략 주므로 여기선 단순화
-            tile_index=tile_index,
-            tile_type=tile_type,
-            tile_step=self.TILE_STEP_PLACE,
-            tile_progress=tile_progress,
-            state=f"place:{state}",
-        )
-
-    def _fb_inspect(self, parent_goal_handle, tile_index: int, tile_type: int, fb_msg):
-        fb = fb_msg.feedback
-        state = getattr(fb, "state", "inspecting")
-        tile_progress = float(getattr(fb, "progress", 0.7))
-
-        self.publish_feedback(
-            goal_handle=parent_goal_handle,
-            overall_step=self.OVERALL_TILE_WORK,
-            overall_progress=0.0,
-            tile_index=tile_index,
-            tile_type=tile_type,
-            tile_step=self.TILE_STEP_INSPECT,
-            tile_progress=tile_progress,
-            state=f"inspect:{state}",
-        )
-
-    def _fb_compact(self, parent_goal_handle, tile_index: int, tile_type: int, fb_msg):
-        fb = fb_msg.feedback
-        state = getattr(fb, "state", "compacting")
-        tile_progress = float(getattr(fb, "progress", 0.9))
-
-        self.publish_feedback(
-            goal_handle=parent_goal_handle,
-            overall_step=self.OVERALL_TILE_WORK,
-            overall_progress=0.0,
-            tile_index=tile_index,
-            tile_type=tile_type,
-            tile_step=self.TILE_STEP_COMPACT,
-            tile_progress=tile_progress,
-            state=f"compact:{state}",
-        )
 
 
 def main(args=None):
@@ -497,13 +469,12 @@ def main(args=None):
 
     node = TaskManagerNode()
     ex = MultiThreadedExecutor()
-
     ex.add_node(node)
 
     try:
         ex.spin()
     except KeyboardInterrupt:
-        node.get_logger().info("Interrupted by user")
+        node.get_logger().info("Interrupted")
     finally:
         try:
             ex.remove_node(node)

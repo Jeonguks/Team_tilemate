@@ -143,15 +143,7 @@ class PlaceTileActionServer(Node):
 
         time.sleep(0.2)
 
-        self.get_logger().info("#" * 50)
-        self.get_logger().info(f"ROBOT_ID: {ROBOT_ID}")
-        self.get_logger().info(f"ROBOT_MODEL: {ROBOT_MODEL}")
-        self.get_logger().info(f"ROBOT_TCP: {get_tcp()}")
-        self.get_logger().info(f"ROBOT_TOOL: {get_tool()}")
-        self.get_logger().info(f"ROBOT_MODE: {get_robot_mode()}")
-        self.get_logger().info(f"VELOCITY: {VELOCITY}")
-        self.get_logger().info(f"ACC: {ACC}")
-        self.get_logger().info("#" * 50)
+        self.get_logger().info("\033[94m [3/4] [PLACE_TILE] initialize Done!\033[0m")
 
     # ----------------------------
     # Helpers
@@ -272,15 +264,15 @@ class PlaceTileActionServer(Node):
         from DSR_ROBOT2 import posx
 
         placement_positions = {
-            1: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            2: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            3: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            4: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            5: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            6: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            7: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            8: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
-            9: [-20.954, 15.683, 104.247, 80.223, 107.752, -32.848],
+            1: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            2: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            3: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            4: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            5: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            6: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            7: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            8: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
+            9: [380.745, 77.112, 179.766, 89.88, 91.912, 92.767],
         }
         if placement_index not in placement_positions:
             raise ValueError(f"Invalid placement_index: {placement_index}")

@@ -43,7 +43,7 @@ class PickTileActionServer(Node):
         )
 
         self.initialize_robot()
-        self.get_logger().info("PickTileActionServer ready.")
+        self.get_logger().info("\033[94m [2/4] [PICK_TILE] initialize Done!\033[0m")
 
     # --------------------------------------------------
     # Action callbacks
@@ -130,16 +130,6 @@ class PickTileActionServer(Node):
 
         time.sleep(0.2)
 
-        self.get_logger().info("#" * 50)
-        self.get_logger().info(f"ROBOT_ID: {self.robot_cfg.robot_id}")
-        self.get_logger().info(f"ROBOT_MODEL: {self.robot_cfg.robot_model}")
-        self.get_logger().info(f"ROBOT_TCP: {get_tcp()}")
-        self.get_logger().info(f"ROBOT_TOOL: {get_tool()}")
-        self.get_logger().info(f"ROBOT_MODE: {get_robot_mode()}")
-        self.get_logger().info(f"VELOCITY: {self.robot_cfg.vel}")
-        self.get_logger().info(f"ACC: {self.robot_cfg.acc}")
-        self.get_logger().info("#" * 50)
-
     # --------------------------------------------------
     # pick position preset
     # --------------------------------------------------
@@ -160,10 +150,9 @@ class PickTileActionServer(Node):
 
     # --------------------------------------------------
     # main pick logic
-    # --------------------------------------------------
+    # ------------------------------------------------#--
 
     def perform_task_once(self, goal_handle):
-
         from DSR_ROBOT2 import (
             posj,
             movej,
@@ -180,24 +169,27 @@ class PickTileActionServer(Node):
         tile_type = int(goal_handle.request.tile_type)
         tile_index = int(goal_handle.request.tile_index)
 
-        self.get_logger().info(
-            f"[PICK_TILE] tile_index={tile_index}, tile_type={tile_type}"
-        )
+        self.get_logger().info(f"[PICK_TILE] tile_index={tile_index}, tile_type={tile_type}")
 
-        # Home
+        # 1) Home
+        self.get_logger().info("[PICK_TILE] step1: movej home start")
         j_ready = posj([0, 0, 90, 0, 90, 0])
         movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
-        self.gripper.open_gripper()
+        self.get_logger().info("[PICK_TILE] step1: movej home cmd sent")
         mwait()
+        self.get_logger().info("[PICK_TILE] step1: movej home done")
 
-        # Pre pick
+        # 2) Pre-pick
         pick_pos = self.get_pick_pos(tile_type)
-
+        self.get_logger().info(f"[PICK_TILE] step2: pre_pick target={pick_pos}")
         movel(pick_pos, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
+        self.get_logger().info("[PICK_TILE] step2: pre_pick cmd sent")
         mwait()
+        self.get_logger().info("[PICK_TILE] step2: pre_pick done")
 
-        # descend
+        # 3) descend
         cur, _ = get_current_posx(DR_BASE)
+        self.get_logger().info(f"[PICK_TILE] step3: current={cur}")
 
         target = [
             cur[0],
@@ -207,25 +199,27 @@ class PickTileActionServer(Node):
             cur[4],
             cur[5],
         ]
-
+        self.get_logger().info(f"[PICK_TILE] step3: descend target={target}")
         movel(posx(target), ref=DR_BASE, vel=30, acc=30)
+        self.get_logger().info("[PICK_TILE] step3: descend cmd sent")
         mwait()
+        self.get_logger().info("[PICK_TILE] step3: descend done")
 
-        # gripper close
+        # 4) gripper
+        self.get_logger().info("[PICK_TILE] step4: close gripper start")
         self.gripper.close_gripper()
-
+        self.get_logger().info("[PICK_TILE] step4: close gripper done")
         time.sleep(0.5)
 
-        # lift
+        # 5) lift
+        self.get_logger().info("[PICK_TILE] step5: lift start")
         movel(pick_pos, vel=30, acc=30)
+        self.get_logger().info("[PICK_TILE] step5: lift cmd sent")
         mwait()
+        self.get_logger().info("[PICK_TILE] step5: lift done")
 
-        #move home
-        movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
-
-
+        self.get_logger().info("[PICK_TILE] finished")
         return True, "pick_success"
-
 
 # --------------------------------------------------
 # main
