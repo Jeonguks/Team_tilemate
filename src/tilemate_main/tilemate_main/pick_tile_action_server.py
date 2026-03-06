@@ -182,7 +182,7 @@ class PickTileActionServer(Node):
         # 2) Pre-pick
         pick_pos = self.get_pick_pos(tile_type)
         self.get_logger().info(f"[PICK_TILE] step2: pre_pick target={pick_pos}")
-        movel(pick_pos, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
+        movel(pick_pos, ref=DR_BASE, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
         self.get_logger().info("[PICK_TILE] step2: pre_pick cmd sent")
         mwait()
         self.get_logger().info("[PICK_TILE] step2: pre_pick done")
