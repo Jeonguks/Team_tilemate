@@ -438,7 +438,7 @@
                     <div style="flex:1; background:#060d1a; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative; min-height:0;">
                         <div id="color-placeholder" style="display:flex; flex-direction:column; align-items:center; gap:10px; color:#445;">
                             <div style="font-size:3em;">📷</div>
-                            <div style="color:#556;">Firebase에서 컬러 이미지 수신 대기 중...</div>
+                            <div style="color:#556;">WebSocket에서 컬러 이미지 수신 대기 중...</div>
                             <div style="font-size:0.82em; color:#445;">/camera/camera/color/image_raw</div>
                         </div>
                         <canvas id="color-canvas" style="display:none; max-width:100%; max-height:100%; object-fit:contain;"></canvas>
@@ -1088,107 +1088,169 @@
         camera.aspect = container.clientWidth / container.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(container.clientWidth, container.clientHeight);
     });
 
-    let depthSubscribing = false; let depthFirebaseListener = null; let depthFpsInterval = null; let depthFrameCount = 0;
-    
-    /* ── Color Camera ── */
-    let colorSubscribing = false; let colorFirebaseListener = null; let colorFpsInterval = null; let colorFrameCount = 0;
+
+
+    /* ════════════════════════════════════════════════════════
+       WebSocket 카메라 스트림
+       로봇PC_IP 를 실제 IP로 수정하세요 (예: 192.168.0.10)
+       ════════════════════════════════════════════════════════ */
+    const WS_URL = 'ws://127.0.0.1:8765';   // ★ 여기를 실제 IP로 변경
+
+    let ws = null;
+    let wsReconnectTimer = null;
+
+    // FPS 카운터
+    let colorFrameCount = 0, depthFrameCount = 0;
+    let colorFpsInterval = null, depthFpsInterval = null;
+
+    // 수신 활성 플래그 (버튼으로 개별 제어)
+    let colorSubscribing  = false;
+    let depthSubscribing  = false;
+    let pc3dSubscribing   = false;
+
+    /* ── WebSocket 연결 ─────────────────────────────────── */
+    function wsConnect() {
+        if (ws && ws.readyState <= 1) return; // 이미 연결 중 or 연결됨
+        ws = new WebSocket(WS_URL);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = () => {
+            console.log('[WS] 연결 성공:', WS_URL);
+            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+        };
+
+        ws.onclose = () => {
+            console.warn('[WS] 연결 끊김 → 3초 후 재연결');
+            wsReconnectTimer = setTimeout(wsConnect, 3000);
+        };
+
+        ws.onerror = (e) => { console.error('[WS] 오류:', e); };
+
+        ws.onmessage = (event) => {
+            const buf    = event.data;          // ArrayBuffer
+            const view   = new Uint8Array(buf);
+            const header = String.fromCharCode(view[0], view[1], view[2], view[3], view[4]);
+            const payload = buf.slice(5);
+
+            if (header === 'COLOR' && colorSubscribing) {
+                colorFrameCount++;
+                renderColorImageWS(payload);
+            } else if (header === 'DEPTH' && depthSubscribing) {
+                depthFrameCount++;
+                renderDepthImageWS(payload);
+            } else if (header === 'POINT' && pc3dSubscribing) {
+                renderPointCloud(JSON.parse(new TextDecoder().decode(payload)));
+            }
+        };
+    }
+
+    /* ── 컬러 이미지 렌더 ───────────────────────────────── */
+    function renderColorImageWS(payload) {
+        const blob = new Blob([payload], { type: 'image/jpeg' });
+        const url  = URL.createObjectURL(blob);
+        const img  = new Image();
+        img.onload = () => {
+            const canvas = document.getElementById('color-canvas');
+            canvas.width  = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            document.getElementById('color-placeholder').style.display = 'none';
+            canvas.style.display = 'block';
+            const infoBar = document.getElementById('color-info-bar');
+            infoBar.style.display = 'flex';
+            document.getElementById('color-resolution').innerText =
+                `해상도: ${img.naturalWidth} × ${img.naturalHeight}`;
+            URL.revokeObjectURL(url);
+        };
+        img.src = url;
+    }
+
+    /* ── 깊이 이미지 렌더 ───────────────────────────────── */
+    function renderDepthImageWS(payload) {
+        // 앞 8바이트: d_min(4B LE uint32) + d_max(4B LE uint32)
+        const meta  = new DataView(payload);
+        const d_min = meta.getUint32(0, true);
+        const d_max = meta.getUint32(4, true);
+        const imgBuf = payload.slice(8);
+        const blob = new Blob([imgBuf], { type: 'image/png' });
+        const url  = URL.createObjectURL(blob);
+        const img  = new Image();
+        img.onload = () => {
+            const canvas = document.getElementById('depth-canvas');
+            canvas.width  = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            document.getElementById('pc-placeholder').style.display = 'none';
+            canvas.style.display = 'block';
+            document.getElementById('legend-min').innerText = `${d_min}mm`;
+            document.getElementById('legend-max').innerText = `${d_max}mm`;
+            document.getElementById('pc-depth-range').innerText = `깊이: ${d_min}~${d_max}mm`;
+            const legend = document.getElementById('depth-legend');
+            if (legend) legend.style.display = 'flex';
+            URL.revokeObjectURL(url);
+        };
+        img.src = url;
+    }
+
+    /* ── 컬러 카메라 버튼 ───────────────────────────────── */
     function toggleColorSubscription() { if (colorSubscribing) stopColorSubscription(); else startColorSubscription(); }
     function startColorSubscription() {
         colorSubscribing = true;
+        wsConnect();
         document.getElementById('color-subscribe-btn').innerText = '수신 중지';
         document.getElementById('color-subscribe-btn').style.background = '#c62828';
         document.getElementById('color-status').innerHTML = '<span style="color:#4caf50;">● 수신 중</span>';
-        colorFpsInterval = setInterval(() => { document.getElementById('color-fps').innerText = `${colorFrameCount} FPS`; colorFrameCount = 0; }, 1000);
-        colorFirebaseListener = database.ref('color_image').on('value', (snap) => {
-            const data = snap.val(); if (!data || !data.image) return;
-            renderColorImage(data); colorFrameCount++;
-        });
+        colorFpsInterval = setInterval(() => {
+            document.getElementById('color-fps').innerText = `${colorFrameCount} FPS`;
+            colorFrameCount = 0;
+        }, 1000);
     }
     function stopColorSubscription() {
-        if (colorFirebaseListener) database.ref('color_image').off('value', colorFirebaseListener);
-        if (colorFpsInterval) clearInterval(colorFpsInterval);
         colorSubscribing = false;
+        if (colorFpsInterval) { clearInterval(colorFpsInterval); colorFpsInterval = null; }
         document.getElementById('color-subscribe-btn').innerText = '수신 시작';
         document.getElementById('color-subscribe-btn').style.background = '#1565c0';
         document.getElementById('color-status').innerHTML = '● 대기 중';
         document.getElementById('color-fps').innerText = '';
     }
-    function renderColorImage(data) {
-        const canvas = document.getElementById('color-canvas');
-        const placeholder = document.getElementById('color-placeholder');
-        const infoBar = document.getElementById('color-info-bar');
-        const img = new Image();
-        img.onload = () => {
-            canvas.width = data.width; canvas.height = data.height;
-            const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
-            placeholder.style.display = 'none';
-            canvas.style.display = 'block';
-            infoBar.style.display = 'flex';
-            document.getElementById('color-resolution').innerText = `해상도: ${data.width} × ${data.height}`;
-        };
-        img.src = 'data:image/png;base64,' + data.image;
-    }
-    function openPointCloudViewer() { document.getElementById('pointcloud-popup').classList.add('show'); }
-    function closeDepthViewer() { document.getElementById('pointcloud-popup').classList.remove('show'); stopDepthSubscription(); stopPCSubscription(); stopColorSubscription(); }
+
+    /* ── 깊이 이미지 버튼 ───────────────────────────────── */
     function toggleDepthSubscription() { if (depthSubscribing) stopDepthSubscription(); else startDepthSubscription(); }
     function startDepthSubscription() {
         depthSubscribing = true;
+        wsConnect();
         document.getElementById('pc-subscribe-btn').innerText = '수신 중지';
         document.getElementById('pc-subscribe-btn').style.background = '#c62828';
         document.getElementById('pc-status').innerHTML = '<span style="color:#4caf50;">● 수신 중</span>';
-        depthFpsInterval = setInterval(() => { document.getElementById('pc-fps').innerText = `${depthFrameCount} FPS`; depthFrameCount = 0; }, 1000);
-        depthFirebaseListener = database.ref('depth_image').on('value', (snap) => {
-            const data = snap.val(); if (!data || !data.image) return;
-            renderDepthImage(data); depthFrameCount++;
-        });
+        depthFpsInterval = setInterval(() => {
+            document.getElementById('pc-fps').innerText = `${depthFrameCount} FPS`;
+            depthFrameCount = 0;
+        }, 1000);
     }
     function stopDepthSubscription() {
-        if (depthFirebaseListener) database.ref('depth_image').off('value', depthFirebaseListener);
-        if (depthFpsInterval) clearInterval(depthFpsInterval);
         depthSubscribing = false;
+        if (depthFpsInterval) { clearInterval(depthFpsInterval); depthFpsInterval = null; }
         document.getElementById('pc-subscribe-btn').innerText = '수신 시작';
         document.getElementById('pc-subscribe-btn').style.background = '#1565c0';
         document.getElementById('pc-status').innerHTML = '● 대기 중';
     }
-    function renderDepthImage(data) {
-        const canvas = document.getElementById('depth-canvas');
-        const placeholder = document.getElementById('pc-placeholder');
-        const img = new Image();
-        img.onload = () => {
-            canvas.width = data.width; canvas.height = data.height;
-            const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
-            placeholder.style.display = 'none'; canvas.style.display = 'block';
-            document.getElementById('legend-min').innerText = `${data.d_min}mm`;
-            document.getElementById('legend-max').innerText = `${data.d_max}mm`;
-            document.getElementById('pc-depth-range').innerText = `깊이: ${data.d_min}~${data.d_max}mm`;
-        };
-        img.src = 'data:image/png;base64,' + data.image;
-    }
 
-    /* ── Point Cloud 3D Viewer ── */
+    /* ── Point Cloud 3D Viewer ─────────────────────────── */
     let pc3dScene, pc3dCamera, pc3dRenderer, pc3dControls, pc3dPoints;
-    let pc3dSubscribing = false, pc3dFirebaseListener = null;
 
     function initPC3D() {
         const container = document.getElementById('pc3d-container');
         if (!container || pc3dRenderer) return;
-
         pc3dScene = new THREE.Scene();
         pc3dScene.background = new THREE.Color(0x060d1a);
-
         pc3dCamera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.01, 100);
         pc3dCamera.position.set(0, 0, 2);
-
         pc3dRenderer = new THREE.WebGLRenderer({ antialias: true });
         pc3dRenderer.setSize(container.clientWidth, container.clientHeight);
         container.appendChild(pc3dRenderer.domElement);
-
         pc3dControls = new THREE.OrbitControls(pc3dCamera, pc3dRenderer.domElement);
         pc3dControls.enableDamping = true;
-
-        // 축 헬퍼
         pc3dScene.add(new THREE.AxesHelper(0.3));
-
         (function animate() {
             requestAnimationFrame(animate);
             if (pc3dControls) pc3dControls.update();
@@ -1196,31 +1258,27 @@
         })();
     }
 
-    function togglePCSubscription() {
-        if (pc3dSubscribing) stopPCSubscription();
-        else startPCSubscription();
-    }
-
+    function togglePCSubscription() { if (pc3dSubscribing) stopPCSubscription(); else startPCSubscription(); }
     function startPCSubscription() {
         initPC3D();
         pc3dSubscribing = true;
+        wsConnect();
         const btn = document.getElementById('pc3d-subscribe-btn');
         btn.innerText = '수신 중지'; btn.style.background = '#c62828';
         document.getElementById('pc3d-status').innerHTML = '<span style="color:#66bb6a;">● 수신 중</span>';
-
-        pc3dFirebaseListener = database.ref('point_cloud').on('value', (snap) => {
-            const data = snap.val();
-            if (!data || !data.x) return;
-            renderPointCloud(data);
-        });
     }
-
     function stopPCSubscription() {
-        if (pc3dFirebaseListener) database.ref('point_cloud').off('value', pc3dFirebaseListener);
         pc3dSubscribing = false;
         const btn = document.getElementById('pc3d-subscribe-btn');
         btn.innerText = '수신 시작'; btn.style.background = '#1565c0';
         document.getElementById('pc3d-status').innerHTML = '● 대기 중';
+    }
+
+    /* ── openPointCloudViewer / closeDepthViewer ─────────── */
+    function openPointCloudViewer() { document.getElementById('pointcloud-popup').classList.add('show'); }
+    function closeDepthViewer() {
+        document.getElementById('pointcloud-popup').classList.remove('show');
+        stopColorSubscription(); stopDepthSubscription(); stopPCSubscription();
     }
 
     function renderPointCloud(data) {

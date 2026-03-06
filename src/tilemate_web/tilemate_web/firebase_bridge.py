@@ -81,39 +81,39 @@ class FirebaseBridgeNode(Node):
         self.create_subscription(Int32,            "/robot/tile_inspect_no",       self._cb_tile_inspect_no,             10)
         self.create_subscription(Int32,            "/robot/pressing_no",             self._cb_pressing_no,             10)
         
-        # ── Depth Image 구독 (/camera/camera/depth/image_rect_raw) ──
-        self._depth_ref = db.reference("/depth_image")
-        self._last_depth_update = 0.0
-        self.create_subscription(
-            Image,
-            "/camera/camera/depth/image_rect_raw",
-            self._cb_depth_image,
-            10
-        )
-        self.get_logger().info("Subscribed: /camera/camera/depth/image_rect_raw")
+        # # ── Depth Image 구독 (/camera/camera/depth/image_rect_raw) ──
+        # self._depth_ref = db.reference("/depth_image")
+        # self._last_depth_update = 0.0
+        # self.create_subscription(
+        #     Image,
+        #     "/camera/camera/depth/image_rect_raw",
+        #     self._cb_depth_image,
+        #     10
+        # )
+        # self.get_logger().info("Subscribed: /camera/camera/depth/image_rect_raw")
 
-        # ── Color Image 구독 (/camera/camera/color/image_raw) ──
-        self._color_ref = db.reference("/color_image")
-        self._last_color_update = 0.0
-        self.create_subscription(
-            Image,
-            "/camera/camera/color/image_raw",
-            self._cb_color_image,
-            10
-        )
-        self.get_logger().info("Subscribed: /camera/camera/color/image_raw")
+        # # ── Color Image 구독 (/camera/camera/color/image_raw) ──
+        # self._color_ref = db.reference("/color_image")
+        # self._last_color_update = 0.0
+        # self.create_subscription(
+        #     Image,
+        #     "/camera/camera/color/image_raw",
+        #     self._cb_color_image,
+        #     10
+        # )
+        # self.get_logger().info("Subscribed: /camera/camera/color/image_raw")
 
-        # ── PointCloud2 구독 (/camera/camera/depth/color/points) ──
-        self._pc_ref = db.reference("/point_cloud")
-        self._last_pc_update = 0.0
-        self.create_subscription(
-            PointCloud2,
-            "/camera/camera/depth/color/points",
-            self._cb_point_cloud,
-            10
-        )
-        self.get_logger().info("Subscribed: /camera/camera/depth/color/points")
-        self.get_logger().info("Publishing: /robot/command, /robot/design, /robot/design_ab")
+        # # ── PointCloud2 구독 (/camera/camera/depth/color/points) ──
+        # self._pc_ref = db.reference("/point_cloud")
+        # self._last_pc_update = 0.0
+        # self.create_subscription(
+        #     PointCloud2,
+        #     "/camera/camera/depth/color/points",
+        #     self._cb_point_cloud,
+        #     10
+        # )
+        # self.get_logger().info("Subscribed: /camera/camera/depth/color/points")
+        # self.get_logger().info("Publishing: /robot/command, /robot/design, /robot/design_ab")
 
         # ── 서비스 클라이언트 ──────────────────────────────
         self._tool_force_client = self.create_client(GetToolForce,     '/dsr01/aux_control/get_tool_force')
