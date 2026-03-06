@@ -420,7 +420,7 @@ class TaskManagerNode(Node):
 
         goal = PlaceTile.Goal()
         goal.placement_index = tile_index + 1
-        goal.max_press_force = 15.0
+        goal.max_press_force = 30.0
         goal.target_press_depth = 5.0
 
         send_future = self.place_client.send_goal_async(goal)
