@@ -146,11 +146,9 @@ class TilePickPlaceNode(Node):
         self.pub_status.publish(m)
         self.get_logger().info(f"[COMPACT->STATUS] {m.data}")
 
-
     def _pub_pressing(self, tile_i: int):
         m = Int32(); m.data = int(tile_i)
         self.pub_pressing.publish(m)
-
 
     def _wait_if_paused(self):
         if self._pause:

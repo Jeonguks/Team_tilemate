@@ -233,8 +233,6 @@ def smart_twist_compaction(timeout_s=20.0, log_dt=0.2):
         # -------------------------
         # 2) 비비기(조인트6 왕복)
         # -------------------------
-        
-        
 
         set_desired_force(
             fd=[0, 0, FZ, 0, 0, 0], 
@@ -306,34 +304,6 @@ def perform_task_once():
         movel(posx(target), ref=DR_BASE, vel=30, acc=30)
         mwait()
 
-    # # Home
-    # JReady = posj([0, 0, 90, 0, 90, 0])
-    # movej(JReady, vel=VELOCITY, acc=ACC)
-    # mwait()
-
-    # # 플레이싱 전 위치 (Joint)
-
-    # pre_place = posj([-20.954, 15.683, 104.247, 80.223, 107.752, -32.848])
-    # movej(pre_place, vel=VELOCITY, acc=ACC)
-    # mwait()
-
-    # move_relative(0.0,0.0,-100.0)
-
-    # # ✅ 압착(스마트 트위스트) 실행
-    # print("[SMART_TWIST] start")
-    # ok, depth = smart_twist_compaction(timeout_s=20.0, log_dt=0.2)
-    # print(f"[SMART_TWIST] ok={ok}, depth={depth:.3f}")
-
-    # wait(1.0)
-    # gripper.open_gripper()
-    # wait(1.0)
-
-    # print("[TASK] movej -> Home")
-    # movej(JReady, vel=VELOCITY, acc=ACC)
-    # mwait()
-
-    # print("[TASK] DONE")
-
     JReady    = posj([0, 0, 90, 0, 90, 0])
     pre_place = posj([-25.894,29.976,114.271,67.522,103.095,-54.547])
 
@@ -386,9 +356,10 @@ def perform_task_once():
         # gripper.open_gripper()
         # wait(1.0)
 
+        # 6. 중간 체크포인트 이동
         move_relative(0.0, -30.0, 0.0)
 
-        # 6. 홈 복귀
+        # 7. 홈 복귀
         print(f"[TILE {tile_num}] 홈 복귀")
         movej(JReady, vel=VELOCITY, acc=ACC)
         mwait()
