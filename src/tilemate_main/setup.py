@@ -30,18 +30,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'gripper_node = tilemate_main.gripper_node:main',
-            'task_manager_node = tilemate_main.task_manager_node:main',
-            'scraper_motion_node = tilemate_main.scraper_motion_node:main',
-            'tile_motion_node = tilemate_main.tile_motion_node:main',
-            'tile_inspect_motion_node = tilemate_main.tile_inspect_motion_node:main',
-            'tile_compact_motion_node = tilemate_main.tile_compact_motion_node:main',
-            'interrupt_node = tilemate_main.interrupt_node:main',
-            'unit_test_compaction = tilemate_main.unit_test_compaction:main',
             'pick_tile_action_server = tilemate_main.pick_tile_action_server:main',
             'place_tile_action_server = tilemate_main.place_tile_action_server:main',
-            'new_task_manager = tilemate_main.new_task_manager:main',
-            'depthtest=tilemate_main.depthtest:main',
+            'task_manager = tilemate_main.task_manager:main',
         ],
     },
 )
