@@ -6,4 +6,10 @@ int8 tile_type        # 타일 타입
 bool success
 string message
 ---
-# No Feedback
+# Feedback
+int32 step
+float32 progress
+string state
+float32 target_x
+float32 target_y
+float32 target_z

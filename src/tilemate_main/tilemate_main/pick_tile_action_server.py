@@ -75,7 +75,29 @@ class PickTileActionServer(Node):
             f"tile_type={goal_request.tile_type}"
         )
         return GoalResponse.ACCEPT
+    def publish_feedback(
+        self,
+        goal_handle,
+        step: int,
+        progress: float,
+        state: str,
+        target_xyz=None,
+    ):
+        fb = PickTile.Feedback()
+        fb.step = int(step)
+        fb.progress = float(progress)
+        fb.state = str(state)
 
+        if target_xyz is None:
+            fb.target_x = 0.0
+            fb.target_y = 0.0
+            fb.target_z = 0.0
+        else:
+            fb.target_x = float(target_xyz[0])
+            fb.target_y = float(target_xyz[1])
+            fb.target_z = float(target_xyz[2])
+
+        goal_handle.publish_feedback(fb)
     def cancel_callback(self, goal_handle):
         self.get_logger().warn("Cancel request received")
         return CancelResponse.ACCEPT
@@ -189,6 +211,7 @@ class PickTileActionServer(Node):
 
         # 1) Home
         j_ready = posj([0, 0, 90, 0, 90, 0])
+        self.publish_feedback(goal_handle, 1, 0.05, "move_home")
         self.get_logger().info("[PICK_TILE] step1: move home")
         movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
         mwait()
@@ -197,8 +220,9 @@ class PickTileActionServer(Node):
         if goal_handle.is_cancel_requested:
             return False, "canceled"
 
-        # 2) 측정위치 이동
+        # 2) depth 측정 위치 이동
         depth_above = self.get_depth_above_pos(tile_type)
+        self.publish_feedback(goal_handle, 2, 0.20, "move_depth_above", depth_above[:3])
         self.get_logger().info(f"[PICK_TILE] step2: move to depth_above={depth_above}")
         movel(depth_above, ref=DR_BASE, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
         mwait()
@@ -206,13 +230,16 @@ class PickTileActionServer(Node):
         if goal_handle.is_cancel_requested:
             return False, "canceled"
 
-        # 3) depth 준비 확인
+        # 3) depth 준비 대기
+        self.publish_feedback(goal_handle, 3, 0.30, "wait_depth_ready", depth_above[:3])
         self.get_logger().info("[PICK_TILE] step3: wait for depth ready")
         if not self.wait_for_depth_ready(timeout_sec=2.0):
+            self.publish_feedback(goal_handle, 3, 0.30, "depth_not_ready", depth_above[:3])
             return False, "depth_not_ready"
 
-        # 4) 현재 TCP pose 기준으로 center depth -> base point 추정
+        # 4) 현재 TCP 기준 depth target 추정
         robot_posx, _ = get_current_posx(DR_BASE)
+        self.publish_feedback(goal_handle, 4, 0.45, "estimate_target")
         self.get_logger().info(f"[PICK_TILE] step4: current tcp={robot_posx}")
 
         base_point = self.depth_localizer.estimate_center_pick_base_point(
@@ -221,32 +248,26 @@ class PickTileActionServer(Node):
             min_mm=200,
             max_mm=5000,
             inlier_thresh_mm=80,
-            z_offset_mm=+50.0, #TODO 그리퍼 하강 위치 조절 필요 
+            z_offset_mm=+50.0,
         )
 
         if base_point is None:
+            self.publish_feedback(goal_handle, 4, 0.45, "depth_target_not_found")
             return False, "depth_target_not_found"
 
-        self.get_logger().info(f"[PICK_TILE] step4: estimated base_point={base_point.tolist()}")
-
-        # orientation은 현재 pick_above 자세 유지
-
-        target_coordinate = [
+        target_xyz = [
             float(base_point[0]),
             float(base_point[1]),
             float(base_point[2]),
-            robot_posx[3],
-            robot_posx[4],
-            robot_posx[5]+90.0,
         ]
+        self.get_logger().info(f"[PICK_TILE] step4: estimated base_point={base_point.tolist()}")
 
-        # 2) tray 상단으로 이동
+        # 5) pick 상단 이동
         pick_above = self.get_pick_above_pos(tile_type)
-
-        self.get_logger().info(f"[PICK_TILE] step2: move to pick_above={pick_above}")
+        self.publish_feedback(goal_handle, 5, 0.60, "move_pick_above", pick_above[:3])
+        self.get_logger().info(f"[PICK_TILE] step5: move to pick_above={pick_above}")
         movel(posx(pick_above), ref=DR_BASE, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
         mwait()
-
 
         if goal_handle.is_cancel_requested:
             return False, "canceled"
@@ -254,6 +275,8 @@ class PickTileActionServer(Node):
         # 6) 실제 pick 위치로 하강
         pick_coordinate = self.get_pick_above_pos(tile_type)
         pick_coordinate[2] = float(base_point[2])
+
+        self.publish_feedback(goal_handle, 6, 0.75, "descend_pick_target", target_xyz)
         self.get_logger().info(f"[PICK_TILE] step6: descend to pick_target={pick_coordinate}")
         movel(posx(pick_coordinate), ref=DR_BASE, vel=20, acc=20)
         mwait()
@@ -262,25 +285,23 @@ class PickTileActionServer(Node):
             return False, "canceled"
 
         # 7) gripper close
+        self.publish_feedback(goal_handle, 7, 0.88, "close_gripper", target_xyz)
         self.get_logger().info("[PICK_TILE] step7: close gripper")
         self.gripper.close_gripper()
         time.sleep(1.5)
 
+        if goal_handle.is_cancel_requested:
+            return False, "canceled"
+
         # 8) 다시 상단으로 상승
+        self.publish_feedback(goal_handle, 8, 0.97, "lift_after_pick", pick_above[:3])
         self.get_logger().info(f"[PICK_TILE] step8: lift to approach={pick_above}")
         movel(posx(pick_above), ref=DR_BASE, vel=30, acc=30)
         mwait()
 
-        # TODO 툴에 배치
-
-        # movel(posx(tool_coordinate), ref=DR_BASE, vel=30, acc=30)
-        # TODO 툴 잡고 배치 위치 이동
-        # 5번 조인트 movej()
-
-
+        self.publish_feedback(goal_handle, 9, 1.0, "done", pick_above[:3])
         self.get_logger().info("[PICK_TILE] finished")
         return True, "pick_success"
-    
 
 
 

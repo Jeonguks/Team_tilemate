@@ -247,22 +247,40 @@ class TaskManagerNode(Node):
         p = done_units / total_units
         return max(0.0, min(1.0, p))
 
-    def _pick_feedback_cb(self, goal_handle, tile_index):
+    def _pick_feedback_cb(self, goal_handle, tile_index: int, tile_type: int, total_tiles: int):
+        def _cb(feedback_msg):
+            fb = feedback_msg.feedback
 
-        def cb(feedback_msg):
+            sub_step = int(getattr(fb, "step", 0))
+            sub_progress = float(getattr(fb, "progress", 0.0))
+            sub_state = str(getattr(fb, "state", "pick"))
 
-            self.publish_execute_feedback(
-                goal_handle,
-                stage="pick",
+            overall_progress = self._calc_overall_progress(
                 tile_index=tile_index,
+                total_tiles=total_tiles,
                 tile_step=self.TILE_STEP_PICK,
-                detail="running",
-                progress=0.0,
+                detail_progress=sub_progress,
             )
 
-        return cb
+            self.current_tile_index = tile_index
+            self.current_tile_type = tile_type
+            self.current_detail_step = self.TILE_STEP_PICK
+            self.current_detail_progress = sub_progress
+            self.current_state = f"pick:{sub_state}"
 
-    def _make_place_feedback_cb(self, goal_handle, tile_index: int, tile_type: int, total_tiles: int):
+            self._publish_execute_feedback(
+                goal_handle=goal_handle,
+                overall_step=self.OVERALL_TILE_WORK,
+                overall_progress=overall_progress,
+                tile_index=tile_index,
+                tile_type=tile_type,
+                detail_step=self.TILE_STEP_PICK,
+                detail_progress=sub_progress,
+                state=f"pick:{sub_state}",
+            )
+        return _cb
+
+    def _place_feedback_cb(self, goal_handle, tile_index: int, tile_type: int, total_tiles: int):
         def _cb(feedback_msg):
             fb = feedback_msg.feedback
 
@@ -477,9 +495,9 @@ class TaskManagerNode(Node):
         goal.tile_index = tile_index + 1
         goal.tile_type = tile_type
 
-        send_future = self.place_client.send_goal_async(
+        send_future = self.pick_client.send_goal_async(
             goal,
-            feedback_callback=self._make_place_feedback_cb(
+            feedback_callback=self._pick_feedback_cb(
                 goal_handle=goal_handle,
                 tile_index=tile_index,
                 tile_type=tile_type,
