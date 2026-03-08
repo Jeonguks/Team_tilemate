@@ -192,6 +192,98 @@ class TaskManagerNode(Node):
         self._cancel_active_subgoal()
         self._publish_stop()
         return CancelResponse.ACCEPT
+    
+
+    def _publish_execute_feedback(
+        self,
+        goal_handle,
+        overall_step: int,
+        overall_progress: float,
+        tile_index: int,
+        tile_type: int,
+        detail_step: int,
+        detail_progress: float,
+        state: str,
+    ):
+        fb = ExecuteJob.Feedback()
+        fb.overall_step = int(overall_step)
+        fb.overall_progress = float(overall_progress)
+        fb.tile_index = int(tile_index)
+        fb.tile_type = int(tile_type)
+        fb.detail_step = int(detail_step)
+        fb.detail_progress = float(detail_progress)
+        fb.state = str(state)
+        goal_handle.publish_feedback(fb)
+
+    def _calc_overall_progress(
+        self,
+        tile_index: int,
+        total_tiles: int,
+        tile_step: int,
+        detail_progress: float,
+    ) -> float:
+        if total_tiles <= 0:
+            return 0.0
+
+        total_units = total_tiles * 2.0
+
+        done_units = float(tile_index) * 2.0
+
+        if tile_step == self.TILE_STEP_PICK:
+            done_units += 0.0 + float(detail_progress) * 1.0
+        elif tile_step == self.TILE_STEP_PLACE:
+            done_units += 1.0 + float(detail_progress) * 1.0
+        elif tile_step >= self.TILE_STEP_DONE:
+            done_units += 2.0
+
+        p = done_units / total_units
+        return max(0.0, min(1.0, p))
+
+    def _pick_feedback_cb(self, goal_handle, tile_index):
+
+        def cb(feedback_msg):
+
+            self.publish_execute_feedback(
+                goal_handle,
+                stage="pick",
+                tile_index=tile_index,
+                tile_step=self.TILE_STEP_PICK,
+                detail="running",
+                progress=0.0,
+            )
+
+        return cb
+
+
+    def _place_feedback_cb(self, goal_handle, tile_index):
+
+        def cb(feedback_msg):
+
+            fb = feedback_msg.feedback
+
+            state = getattr(fb, "state", "")
+            progress = float(getattr(fb, "progress", 0.0))
+
+            fx = float(getattr(fb, "fx", 0.0))
+            fy = float(getattr(fb, "fy", 0.0))
+            fz = float(getattr(fb, "fz", 0.0))
+
+            pressed_depth = float(getattr(fb, "pressed_depth", 0.0))
+
+            self.publish_execute_feedback(
+                goal_handle,
+                stage="place",
+                tile_index=tile_index,
+                tile_step=self.TILE_STEP_PLACE,
+                detail=state,
+                progress=progress,
+                fx=fx,
+                fy=fy,
+                fz=fz,
+                pressed_depth=pressed_depth,
+            )
+
+        return cb
 
     # --------------------------------------------------
     # main execute
@@ -366,7 +458,11 @@ class TaskManagerNode(Node):
         goal.tile_index = tile_index + 1
         goal.tile_type = tile_type
 
-        send_future = self.pick_client.send_goal_async(goal)
+        send_future = self.pick_client.send_goal_async(
+            goal,
+            feedback_callback=self._pick_feedback_cb(goal_handle, tile_index)
+        )
+
         sub_goal_handle = await send_future
         self.active_sub_goal = sub_goal_handle
 
@@ -423,7 +519,10 @@ class TaskManagerNode(Node):
         goal.max_press_force = 30.0
         goal.target_press_depth = 5.0
 
-        send_future = self.place_client.send_goal_async(goal)
+        send_future = self.place_client.send_goal_async(
+            goal,
+            feedback_callback=self._place_feedback_cb(goal_handle, tile_index)
+        )
         sub_goal_handle = await send_future
         self.active_sub_goal = sub_goal_handle
 

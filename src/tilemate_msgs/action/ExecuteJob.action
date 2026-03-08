@@ -17,6 +17,6 @@ int32 overall_step           # 전체 공정 단계
 float32 overall_progress     # 전체 공정 진행도 (0~1)
 int32 tile_index             # 현재 타일 번호
 int32 tile_type              # 현재 타일 타입
-int32 tile_step              # 타일 내부 작업 단계
-float32 tile_progress        # 타일 작업 진행도 (0~1)
+int32 detail_step              #  내부 작업 단계
+float32 detail_progress        #  작업 진행도 (0~1)
 string state                 # 현재 상태 설명
