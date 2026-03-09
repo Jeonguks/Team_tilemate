@@ -67,26 +67,87 @@ def move_relative(dx: float, dy: float, dz: float, dw: float=0.0, dp: float=0.0,
     mwait()
     print(get_current_posx(DR_BASE))
 
+def move_absoulte(x: float, y: float, z: float, w: float=0.0, p: float=0.0, r:float=0.0):
+    from DSR_ROBOT2 import posx, posj, movej, movel, mwait, wait, DR_BASE, get_current_posx
 
+    cur, _ = get_current_posx(DR_BASE)
+    target = [
+        x,
+        y,
+        z,
+        cur[3] + w,
+        cur[4] + p,
+        cur[5] + r,
+    ]
+    movel(posx(target), ref=DR_BASE, vel=30, acc=30)
+    mwait()
+    print(get_current_posx(DR_BASE))
+
+
+# def move_to_tile_place_position(placement_index: int):
+#     from DSR_ROBOT2 import (
+#         posj,
+#         movej,
+#         movel,
+#         mwait,
+#         get_current_posx,
+#         DR_BASE,
+#         posx,
+#     )
+
+
+
+#     # 기준 자세
+#     pre_place = posx([380.745, 77.112, 179.766,48.90013885498047, 179.9677276611328, 48.96963119506836])
+
+
+#     tile_wid = 70.0  # mm
+
+#     tile_offsets = {
+#         1: (-tile_wid,  tile_wid),   # 좌상
+#         2: (0.0,        tile_wid),   # 중상
+#         3: (tile_wid,   tile_wid),   # 우상
+#         4: (-tile_wid,  0.0),        # 좌중
+#         5: (0.0,        0.0),        # 중앙
+#         6: (tile_wid,   0.0),        # 우중
+#         7: (-tile_wid, -tile_wid),   # 좌하
+#         8: (0.0,       -tile_wid),   # 중하
+#         9: (tile_wid,  -tile_wid),   # 우하
+#     }
+
+#     if placement_index not in tile_offsets:
+#         raise ValueError(f"invalid placement_index: {placement_index}")
+
+#     dx, dz = tile_offsets[placement_index]
+
+#     print(
+#         f"[PLACE_TILE] placement_index={placement_index}, dx={dx:.3f}, dz={dz:.3f}"
+#     )
+
+#     # 2) 배치 전 기준 위치
+#     movel(pre_place, vel=VELOCITY, acc=ACC, ref=DR_BASE)
+#     mwait()
+
+#     # # 3) 타일 위치로 상대 이동
+#     # move_relative(dx, 100.0, dz)
 def move_to_tile_place_position(placement_index: int):
-    from DSR_ROBOT2 import (
-        posj,
-        movej,
-        movel,
-        mwait,
-        get_current_posx,
-        DR_BASE,
-        posx,
-    )
+    from DSR_ROBOT2 import posx, movel, mwait, DR_BASE
 
-
-
-    # 기준 자세
-    pre_place = posx([380.745, 77.112, 179.766,48.90013885498047, 179.9677276611328, 48.96963119506836])
-
-
+    print("2222222222222222222222222222222222222222")
+    # 1. 7번 타일의 실제 측정 좌표 (사용자가 주신 값)
+    pos_7 = [363.055, 242.126, 478.088, 104.028, -161.497, -78.935]
     tile_wid = 70.0  # mm
 
+    # 2. 7번이 (-70, -70) 오프셋을 가진 위치이므로, 
+    # 역으로 5번(중앙, 0,0) 기준 좌표를 계산합니다.
+    # index 0은 X, index 2는 Z라고 가정할 때:
+    base_x = pos_7[0] + tile_wid  # 363.055 + 70
+    base_z = pos_7[2] + tile_wid  # 478.088 + 70
+    
+    # 기준 자세 (5번 타일 위치)
+    pre_place = posx([base_x, pos_7[1], base_z, pos_7[3], pos_7[4], pos_7[5]])
+
+    # 타일 배치 오프셋 (중앙 5번 기준)
     tile_offsets = {
         1: (-tile_wid,  tile_wid),   # 좌상
         2: (0.0,        tile_wid),   # 중상
@@ -94,7 +155,7 @@ def move_to_tile_place_position(placement_index: int):
         4: (-tile_wid,  0.0),        # 좌중
         5: (0.0,        0.0),        # 중앙
         6: (tile_wid,   0.0),        # 우중
-        7: (-tile_wid, -tile_wid),   # 좌하
+        7: (-tile_wid, -tile_wid),   # 좌하 (계산 결과가 pos_7과 일치하게 됨)
         8: (0.0,       -tile_wid),   # 중하
         9: (tile_wid,  -tile_wid),   # 우하
     }
@@ -104,17 +165,21 @@ def move_to_tile_place_position(placement_index: int):
 
     dx, dz = tile_offsets[placement_index]
 
-    print(
-        f"[PLACE_TILE] placement_index={placement_index}, dx={dx:.3f}, dz={dz:.3f}"
-    )
+    target = [base_x, pos_7[1], base_z, pos_7[3], pos_7[4], pos_7[5]]
+    target[0] += dx
+    target[2] += dz
 
-    # 2) 배치 전 기준 위치
-    movel(pre_place, vel=VELOCITY, acc=ACC, ref=DR_BASE)
+    target[2] = 300.0
+    target_pos = posx(target)
+
+    print(f"[PLACE_TILE] Index={placement_index} 이동 좌표: {target_pos}")
+
+    # 4. 로봇 이동
+    # 안전을 위해 접근 높이(Y)를 조절하는 로직을 추가하는 것이 좋습니다.
+    ret = movel(target_pos, vel=30, acc=30, ref=DR_BASE) 
+    print(ret)
+    print("33333333333333333333333333")
     mwait()
-
-    # # 3) 타일 위치로 상대 이동
-    # move_relative(dx, 100.0, dz)
-
 
 def perform_task_once(i:int):
     """Home -> 툴 파지전 -> 툴 파지 -> 뒤로 빼기 -> 배치전 가운데 -> 배치 가운데"""
@@ -131,17 +196,21 @@ def perform_task_once(i:int):
     # ----------------------------
     # 툴 파지전
     # ----------------------------
-    tool_pre_grip_j = posx([238.763, -373.264, 431.064, 57.57767868041992, -179.96800231933594, -122.38433074951172])
-
+    tool_pre_grip_j = posx([238.763, -373.264, 301.064, 57.57767868041992, -179.96800231933594, -122.38433074951172])
+    
     # ----------------------------
     # 툴 파지 위치
     # ----------------------------
-    tool_grip_x = posx([238.763, -373.264, 331.064 - 205.0, 57.57767868041992, -179.96800231933594, -122.38433074951172])
+    #tool_grip_x = posx([238.763, -373.264, 331.064 - 205.0, 57.57767868041992, -179.96800231933594, -122.38433074951172])
+    tool_grip_x = posx([235.122, -362.591, 123.0, 96.12, -179.972, 96.247])
+
 
     # ----------------------------
     # 툴 잡고 뒤로 빼기
     # ----------------------------
-    retreat_x = posx([237.073, -227.493, 331.064- 205.0, 57.57767868041992, -179.96800231933594, -122.38433074951172])
+    #retreat_x = posx([237.073, -227.493, 331.064- 205.0, 57.57767868041992, -179.96800231933594, -122.38433074951172])
+    retreat_x = posx([235.122, -232.591, 123.0, 96.12, -179.972, 96.247])
+
 
 
     print("[TASK] 1. movej -> Home")
@@ -150,8 +219,9 @@ def perform_task_once(i:int):
     mwait()
     wait(1.0)
 
+
     print("180도 회전")
-    move_relative(0.0, 0.0, 0.0, 180.0)
+    move_relative(0.0, 0.0, 0.0, dw=180.0)
 
 
     print("[TASK] 2. tool pick pre-position (joint)")
@@ -176,8 +246,14 @@ def perform_task_once(i:int):
     move_relative(0.0, 0.0, 0.0, -180.0)
 
     print("[TASK] 12. move to place center (cartesian fine pose)")
+    print("111111111111111111111111111111111111111111111")
     move_to_tile_place_position(i) #1~9
+    mwait()
+    wait(0.5)
 
+    print(f"[TASK] 13. Release Tile at position {i}")
+    gripper.open_gripper() # 타일을 놓음
+    wait(1.0)
 
     # print("[TASK] 13. bending motion")
     # move_relative(0.0, 0.0, 0.0, dw=10.0)
