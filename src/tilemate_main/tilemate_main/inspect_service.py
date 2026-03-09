@@ -7,10 +7,10 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from tilemate_msgs.srv import Inspect
 
 
-class InspectTilesService(Node):
+class InspectService(Node):
 
     def __init__(self):
-        super().__init__("inspect_tiles_service")
+        super().__init__("inspect_service")
 
         self.cb_group = ReentrantCallbackGroup()
 
@@ -43,7 +43,7 @@ def main(args=None):
 
     rclpy.init(args=args)
 
-    node = InspectTilesService()
+    node = InspectService()
 
     rclpy.spin(node)
 
