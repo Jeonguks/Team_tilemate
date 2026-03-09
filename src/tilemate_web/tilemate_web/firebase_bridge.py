@@ -206,13 +206,13 @@ class FirebaseBridgeNode(Node):
     def _pattern_to_layout(self, pattern_str: str):
         """
         "B,A,B,A,B,A,B,A,B" -> [2,1,2,1,2,1,2,1,2]
-        A=1, B=2
+        A=흰색=1, B=검정=2, C=데코=3
         """
         if not pattern_str:
             return []
 
         tokens = [x.strip().upper() for x in pattern_str.split(",") if x.strip()]
-        mapping = {"A": 1, "B": 2}  # A=흰색=1, B=검정=2
+        mapping = {"A": 1, "B": 2, "C": 3}  # A=흰색=1, B=검정=2, C=데코=3
 
         layout = []
         for t in tokens:

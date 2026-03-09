@@ -18,6 +18,7 @@ class ExtractKeyword:
             <타일 타입>
             - 1 = 흰색 타일
             - 2 = 검정 타일
+            - 3 = 데코 타일
 
             <3x3 배치 순서>
             - 왼쪽에서 오른쪽, 위에서 아래 순서로 1~9번
@@ -38,6 +39,9 @@ class ExtractKeyword:
 
             - "전부 검정" 또는 "검정으로 깔아" 또는 "검정 타일" 또는 "검은 타일" 또는 "검정만" 또는 "까만 타일"
               → 2 2 2 2 2 2 2 2 2
+
+            - "데코" 또는 "데코 타일" 또는 "데코타일" 또는 "포인트 타일" 또는 "특수 타일"
+              → 3 3 3 3 3 3 3 3 3
 
             <특수 규칙>
             - 명확한 패턴이 없으면 흰색 체크무늬(1 2 1 2 1 2 1 2 1)를 기본값으로 사용
@@ -70,6 +74,9 @@ class ExtractKeyword:
             - 입력: "체크무늬로 깔아"
               출력: 1 2 1 2 1 2 1 2 1
 
+            - 입력: "데코타일로 깔아줘"
+              출력: 3 3 3 3 3 3 3 3 3
+
             <사용자 입력>
             "{user_input}"
         """
@@ -94,8 +101,8 @@ class ExtractKeyword:
             warnings.warn(f"숫자 변환 실패: {result}")
             return None
 
-        # 유효한 타일 타입인지 확인 (1 또는 2만 허용)
-        if not all(t in [1, 2] for t in layout):
+        # 유효한 타일 타입인지 확인 (1, 2, 3만 허용)
+        if not all(t in [1, 2, 3] for t in layout):
             warnings.warn(f"유효하지 않은 타일 타입 포함: {layout}")
             return None
 
@@ -105,7 +112,7 @@ class ExtractKeyword:
             row_str = ""
             for col in range(3):
                 tile = layout[row * 3 + col]
-                row_str += "⬜" if tile == 1 else "⬛"
+                row_str += "⬜" if tile == 1 else ("⬛" if tile == 2 else "🟫")
             print(f"  {row_str}")
 
         return layout
@@ -120,6 +127,7 @@ if __name__ == "__main__":
         "전부 흰색으로 깔아",
         "검정으로 다 깔아줘",
         "체크무늬로 깔아",
+        "데코타일로 깔아줘",
     ]
 
     for test in test_cases:

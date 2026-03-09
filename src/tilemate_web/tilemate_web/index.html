@@ -1350,6 +1350,12 @@
     function closeDepthViewer() {
         document.getElementById('pointcloud-popup').classList.remove('show');
         stopColorSubscription(); stopDepthSubscription(); stopPCSubscription();
+        // role UI를 user로 직접 복원
+        currentRole = 'user';
+        document.getElementById('role-toggle').classList.remove('admin-mode');
+        document.getElementById('btn-user').classList.add('active-user');
+        document.getElementById('btn-user').classList.remove('active-admin');
+        document.getElementById('btn-admin').classList.remove('active-admin');
     }
 
     function renderPointCloud(data) {
@@ -1520,9 +1526,9 @@
     function confirmVoicePattern() {
         if (!voiceLayout) return;
 
-        // layout 1=흰색(B), 2=검정(A)  /  DESIGN_COLORS: B=검정, W=흰색
-        const patternStr = voiceLayout.map(v => v === 2 ? 'A' : 'B').join(',');
-        const designColors = voiceLayout.map(v => v === 2 ? 'B' : 'W');
+        // layout 1=흰색(A), 2=검정(B), 3=데코(C)
+        const patternStr = voiceLayout.map(v => v === 2 ? 'B' : (v === 3 ? 'C' : 'A')).join(',');
+        const designColors = voiceLayout.map(v => v === 2 ? 'B' : (v === 3 ? 'D' : 'W'));  // D=데코
 
         closeVoicePopup();
 
