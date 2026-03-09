@@ -207,7 +207,7 @@
     </div>
 
     <div class="control-panel">
-        <button id="btn-start" onclick="openDesignPopup()">시작</button>
+        <button id="btn-start" onclick="openVoicePopup()">시작</button>
         <button id="btn-pause" onclick="sendCommand('stop')">일시정지</button>
         <button id="btn-reset" onclick="resetSystem()">초기화</button>
     </div>
@@ -354,6 +354,77 @@
             <h2 style="color: #1a237e; margin-bottom: 12px;">배치 끝!</h2>
             <p style="color: #555; font-size: 1.1em; margin-bottom: 24px;">모든 타일 압착이 완료되었습니다.</p>
             <button class="popup-confirm" onclick="document.getElementById('finish-popup').classList.remove('show')">확인</button>
+        </div>
+    </div>
+
+    <!-- ── 음성 녹음 팝업 ── -->
+    <div class="popup-overlay" id="voice-popup">
+        <div class="popup-box" style="width: 460px; text-align: center;">
+            <h2>🎙️ 음성으로 패턴 선택</h2>
+            <p style="color:#555; font-size:1.05em; margin-bottom: 24px;">
+                버튼을 눌러 음성 명령을 입력하세요.<br>
+                <small style="color:#999;">예: "흰색 체크무늬로 깔아줘", "전부 검정으로 깔아"</small>
+            </p>
+
+            <!-- 상태 표시 -->
+            <div id="voice-status-area" style="margin-bottom: 20px;">
+                <div id="voice-idle" style="display:flex; flex-direction:column; align-items:center; gap:12px;">
+                    <div style="font-size:3em;">🎤</div>
+                    <div style="color:#888; font-size:0.95em;">녹음 대기 중</div>
+                </div>
+                <div id="voice-recording" style="display:none; flex-direction:column; align-items:center; gap:12px;">
+                    <div style="font-size:3em; animation: blink-estop 1s step-start infinite;">🔴</div>
+                    <div style="color:#c62828; font-weight:bold; font-size:1.05em;">녹음 중...</div>
+                    <div id="voice-countdown" style="font-size:1.4em; font-weight:bold; color:#1a237e;">5</div>
+                </div>
+                <div id="voice-processing" style="display:none; flex-direction:column; align-items:center; gap:12px;">
+                    <div style="font-size:3em;">⏳</div>
+                    <div style="color:#ef6c00; font-weight:bold;">음성 분석 중...</div>
+                </div>
+                <div id="voice-done" style="display:none; flex-direction:column; align-items:center; gap:12px;">
+                    <div style="font-size:3em;">✅</div>
+                    <div id="voice-result-text" style="color:#2e7d32; font-weight:bold; font-size:1.05em;"></div>
+                    <div id="voice-pattern-preview-popup" style="
+                        display: grid;
+                        grid-template-columns: repeat(3, 32px);
+                        grid-template-rows: repeat(3, 32px);
+                        gap: 4px;
+                        margin: 0 auto;
+                    "></div>
+                </div>
+                <div id="voice-error" style="display:none; flex-direction:column; align-items:center; gap:12px;">
+                    <div style="font-size:3em;">❌</div>
+                    <div id="voice-error-text" style="color:#c62828; font-weight:bold;"></div>
+                </div>
+            </div>
+
+            <button id="voice-record-btn" onclick="startVoiceRecording()" style="
+                display:block; margin: 0 auto 12px;
+                padding: 14px 48px; font-size: 1.2em; font-weight: bold;
+                background: #1a237e; color: white; border: none;
+                border-radius: 10px; cursor: pointer; flex: unset;
+            ">🎙️ 녹음 시작</button>
+
+            <button id="voice-confirm-btn" onclick="confirmVoicePattern()" style="
+                display:none; margin: 0 auto 12px;
+                padding: 14px 48px; font-size: 1.2em; font-weight: bold;
+                background: #2e7d32; color: white; border: none;
+                border-radius: 10px; cursor: pointer; flex: unset;
+            ">✔ 이 패턴으로 시작</button>
+
+            <button onclick="switchToManualPopup()" style="
+                display:block; margin: 8px auto 0;
+                padding: 8px 32px; font-size: 0.95em; font-weight: bold;
+                background: transparent; color: #999; border: 1px solid #ddd;
+                border-radius: 8px; cursor: pointer; flex: unset;
+            ">직접 선택하기 →</button>
+
+            <button onclick="closeVoicePopup()" style="
+                display:block; margin: 6px auto 0;
+                padding: 8px 32px; font-size: 0.95em;
+                background: transparent; color: #bbb; border: none;
+                cursor: pointer; flex: unset;
+            ">취소</button>
         </div>
     </div>
 
@@ -1310,6 +1381,172 @@
         const mat = new THREE.PointsMaterial({ size: 0.005, vertexColors: true });
         pc3dPoints = new THREE.Points(geom, mat);
         pc3dScene.add(pc3dPoints);
+    }
+
+    /* ════════════════════════════════════════════════════════
+       음성 패턴 선택 (STT + Keyword Extraction)
+       ════════════════════════════════════════════════════════ */
+
+    let voiceLayout = null;       // 추출된 layout [1~2 × 9]
+    let voiceCountdownTimer = null;
+    let voicePollingTimer = null;
+
+    function openVoicePopup() {
+        voiceLayout = null;
+        resetVoiceUI();
+        document.getElementById('voice-popup').classList.add('show');
+    }
+
+    function closeVoicePopup() {
+        document.getElementById('voice-popup').classList.remove('show');
+        clearVoiceTimers();
+    }
+
+    function switchToManualPopup() {
+        closeVoicePopup();
+        openDesignPopup();
+    }
+
+    function resetVoiceUI() {
+        clearVoiceTimers();
+        ['voice-idle','voice-recording','voice-processing','voice-done','voice-error']
+            .forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+        document.getElementById('voice-idle').style.display = 'flex';
+        document.getElementById('voice-record-btn').style.display = 'block';
+        document.getElementById('voice-confirm-btn').style.display = 'none';
+    }
+
+    function clearVoiceTimers() {
+        if (voiceCountdownTimer) { clearInterval(voiceCountdownTimer); voiceCountdownTimer = null; }
+        if (voicePollingTimer)   { clearInterval(voicePollingTimer);   voicePollingTimer = null; }
+    }
+
+    function showVoiceState(state) {
+        ['voice-idle','voice-recording','voice-processing','voice-done','voice-error']
+            .forEach(id => { document.getElementById(id).style.display = 'none'; });
+        const el = document.getElementById('voice-' + state);
+        if (el) el.style.display = 'flex';
+    }
+
+    function startVoiceRecording() {
+        // Firebase에 stt_trigger 신호 전달
+        database.ref('robot_command').set({
+            action: 'stt_trigger',
+            timestamp: Date.now()
+        });
+
+        // UI: 녹음 중 상태로 전환
+        showVoiceState('recording');
+        document.getElementById('voice-record-btn').style.display = 'none';
+
+        // 5초 카운트다운
+        let count = 5;
+        document.getElementById('voice-countdown').innerText = count;
+        voiceCountdownTimer = setInterval(() => {
+            count--;
+            document.getElementById('voice-countdown').innerText = count;
+            if (count <= 0) {
+                clearInterval(voiceCountdownTimer);
+                voiceCountdownTimer = null;
+                showVoiceState('processing');
+                startPollingForSTTResult();
+            }
+        }, 1000);
+    }
+
+    function startPollingForSTTResult() {
+        // Firebase robot_status/stt_layout 필드가 채워질 때까지 폴링
+        let attempts = 0;
+        const maxAttempts = 40; // 최대 20초 대기
+
+        voicePollingTimer = setInterval(() => {
+            attempts++;
+            database.ref('robot_status/stt_layout').once('value', (snap) => {
+                const val = snap.val();
+                if (val && Array.isArray(val) && val.length === 9) {
+                    clearInterval(voicePollingTimer);
+                    voicePollingTimer = null;
+                    voiceLayout = val;
+                    showVoiceResult(val);
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(voicePollingTimer);
+                    voicePollingTimer = null;
+                    showVoiceError('음성 인식에 실패했습니다.\n다시 시도해 주세요.');
+                    document.getElementById('voice-record-btn').style.display = 'block';
+                    document.getElementById('voice-record-btn').innerText = '🎙️ 다시 녹음';
+                }
+            });
+        }, 500);
+    }
+
+    function showVoiceResult(layout) {
+        showVoiceState('done');
+
+        // 패턴 설명 텍스트
+        const allWhite = layout.every(v => v === 1);
+        const allBlack = layout.every(v => v === 2);
+        let desc = '커스텀 패턴';
+        if (allWhite) desc = '전체 흰색';
+        else if (allBlack) desc = '전체 검정';
+        else {
+            const isCheckW = JSON.stringify(layout) === JSON.stringify([1,2,1,2,1,2,1,2,1]);
+            const isCheckB = JSON.stringify(layout) === JSON.stringify([2,1,2,1,2,1,2,1,2]);
+            if (isCheckW) desc = '흰색 체크무늬';
+            else if (isCheckB) desc = '검정 체크무늬';
+        }
+        document.getElementById('voice-result-text').innerText = `인식된 패턴: ${desc}`;
+
+        // 미니 프리뷰
+        const grid = document.getElementById('voice-pattern-preview-popup');
+        grid.innerHTML = '';
+        layout.forEach(v => {
+            const cell = document.createElement('div');
+            cell.style.cssText = `width:32px; height:32px; border-radius:4px; border:1px solid #ccc;
+                background: ${v === 2 ? '#212121' : '#ffffff'};`;
+            grid.appendChild(cell);
+        });
+
+        document.getElementById('voice-confirm-btn').style.display = 'block';
+    }
+
+    function showVoiceError(msg) {
+        showVoiceState('error');
+        document.getElementById('voice-error-text').innerText = msg;
+    }
+
+    function confirmVoicePattern() {
+        if (!voiceLayout) return;
+
+        // layout 1=흰색(B), 2=검정(A)  /  DESIGN_COLORS: B=검정, W=흰색
+        const patternStr = voiceLayout.map(v => v === 2 ? 'A' : 'B').join(',');
+        const designColors = voiceLayout.map(v => v === 2 ? 'B' : 'W');
+
+        closeVoicePopup();
+
+        // Firebase에 start 명령 전송
+        database.ref('robot_command').set({
+            action: 'start',
+            design: 3,
+            custom_pattern: patternStr,
+            is_resume: false,
+            timestamp: Date.now()
+        });
+
+        // stt_layout 초기화
+        database.ref('robot_status/stt_layout').remove();
+
+        // 3D 뷰 패턴 색상 업데이트
+        DESIGN_COLORS[3] = designColors;
+        isStarted = true;
+
+        // 패턴 미리보기 표시 (showCustomPatternPreview: B=검정, 나머지=흰색)
+        const voiceValues = voiceLayout.map(v => v === 2 ? 'B' : 'A');
+        showCustomPatternPreview(voiceValues);
+
+        if (!timerInterval) startTimer();
     }
 
     /* ── Role Switcher ── */

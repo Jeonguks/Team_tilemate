@@ -43,6 +43,20 @@ from tilemate_msgs.action import ExecuteJob
 import firebase_admin
 from firebase_admin import credentials, db
 
+# STT / 키워드 추출
+try:
+    import sys
+    import os as _os
+    _this_dir = _os.path.dirname(_os.path.abspath(__file__))
+    if _this_dir not in sys.path:
+        sys.path.insert(0, _this_dir)
+    from STT import STT
+    from keyword_extraction import ExtractKeyword
+    _STT_AVAILABLE = True
+except ImportError as _stt_err:
+    _STT_AVAILABLE = False
+    print(f"[WARNING] STT/keyword_extraction import 실패: {_stt_err}")
+
 
 # --------------------------------------------------
 # Firebase 설정
@@ -166,6 +180,20 @@ class FirebaseBridgeNode(Node):
         self.get_logger().info(f"Firebase 현재 명령 상태: '{self._last_command}'")
         self.cmd_ref.update({"action": "idle"})
 
+        # STT / 키워드 추출기
+        if _STT_AVAILABLE:
+            try:
+                self._stt = STT(os.getenv("OPENAI_API_KEY", ""))
+                self._keyword_extractor = ExtractKeyword()
+                self.get_logger().info("STT / KeywordExtractor 초기화 완료")
+            except Exception as e:
+                self._stt = None
+                self._keyword_extractor = None
+                self.get_logger().warn(f"STT/KeywordExtractor 초기화 실패: {e}")
+        else:
+            self._stt = None
+            self._keyword_extractor = None
+
         self._cmd_thread = threading.Thread(
             target=self._watch_firebase_command,
             daemon=True,
@@ -184,7 +212,7 @@ class FirebaseBridgeNode(Node):
             return []
 
         tokens = [x.strip().upper() for x in pattern_str.split(",") if x.strip()]
-        mapping = {"A": 1, "B": 2}
+        mapping = {"A": 1, "B": 2}  # A=흰색=1, B=검정=2
 
         layout = []
         for t in tokens:
@@ -201,10 +229,10 @@ class FirebaseBridgeNode(Node):
         design = int(cmd_dict.get("design", 0))
 
         if design == 1:
-            # zigzag
+            # zigzag: 흰색 시작 체크무늬 B=흰색, A=검정
             return "B,A,B,A,B,A,B,A,B", design
         elif design == 2:
-            # straight
+            # straight: B=흰색줄, A=검정줄
             return "B,B,B,A,A,A,B,B,B", design
         elif design == 3:
             custom_pattern = str(cmd_dict.get("custom_pattern", "")).strip()
@@ -502,6 +530,43 @@ class FirebaseBridgeNode(Node):
                 time.sleep(interval)
 
     # ==================================================
+    # STT + Keyword Extraction
+    # ==================================================
+    def _handle_stt_trigger(self):
+        """
+        음성 녹음(STT) → 키워드 추출 → Firebase robot_status/stt_layout 저장
+        index.html이 stt_layout을 폴링하여 결과를 표시합니다.
+        """
+        self.get_logger().info("[STT] 음성 녹음 시작")
+        self.ref.update({"stt_layout": None, "stt_state": "recording"})
+
+        try:
+            if self._stt is None or self._keyword_extractor is None:
+                raise RuntimeError("STT 또는 KeywordExtractor가 초기화되지 않았습니다.")
+
+            # 1) 음성 녹음 및 텍스트 변환 (5초)
+            text = self._stt.speech2text()
+            self.get_logger().info(f"[STT] 인식 결과: {text}")
+            self.ref.update({"stt_state": "extracting", "stt_text": text})
+
+            # 2) 키워드 추출 → layout [1~2 × 9]
+            layout = self._keyword_extractor.extract_keyword(text)
+            if layout is None:
+                raise ValueError(f"키워드 추출 실패: '{text}'")
+
+            self.get_logger().info(f"[STT] layout: {layout}")
+
+            # 3) Firebase에 저장 (index.html이 폴링으로 감지)
+            self.ref.update({
+                "stt_layout": layout,
+                "stt_state": "done",
+            })
+
+        except Exception as e:
+            self.get_logger().error(f"[STT] 오류: {e}")
+            self.ref.update({"stt_state": "error", "stt_error": str(e)})
+
+    # ==================================================
     # Firebase command watcher
     # ==================================================
     def _watch_firebase_command(self):
@@ -521,8 +586,16 @@ class FirebaseBridgeNode(Node):
                 if action and action != self._last_command:
                     self._last_command = action
 
+                    # stt_trigger -> STT 녹음 + 키워드 추출 후 Firebase에 layout 저장
+                    if action == "stt_trigger":
+                        stt_thread = threading.Thread(
+                            target=self._handle_stt_trigger,
+                            daemon=True,
+                        )
+                        stt_thread.start()
+
                     # start -> ExecuteJob goal
-                    if action == "start":
+                    elif action == "start":
                         is_resume = bool(cmd.get("is_resume", False))
                         self._send_task_job_goal(cmd, is_resume=is_resume)
 
