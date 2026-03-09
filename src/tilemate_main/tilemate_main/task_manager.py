@@ -690,7 +690,6 @@ class TaskManagerNode(Node):
     # inspect service
     # --------------------------------------------------
     async def call_inspect(self, goal_handle, tile_index, tile_type, total_tiles):
-        del tile_type
 
         if self.kill_requested:
             return False, "killed_before_inspect"
