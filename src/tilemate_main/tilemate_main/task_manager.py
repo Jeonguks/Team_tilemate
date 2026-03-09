@@ -548,7 +548,6 @@ class TaskManagerNode(Node):
     # place action
     # --------------------------------------------------
     async def call_place_tile(self, goal_handle, tile_index, tile_type):
-        del tile_type
 
         if self.kill_requested:
             return False, "killed_before_place"
@@ -563,7 +562,7 @@ class TaskManagerNode(Node):
 
         send_future = self.place_client.send_goal_async(
             goal,
-            feedback_callback=self._place_feedback_cb(goal_handle, tile_index)
+            feedback_callback=self._place_feedback_cb(goal_handle, tile_index, tile_type, total_tiles=self._current_total_tiles)
         )
         sub_goal_handle = await send_future
         self.active_sub_goal = sub_goal_handle
