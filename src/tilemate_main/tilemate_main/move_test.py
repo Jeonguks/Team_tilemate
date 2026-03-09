@@ -83,6 +83,11 @@ def move_absoulte(x: float, y: float, z: float, w: float=0.0, p: float=0.0, r:fl
     mwait()
     print(get_current_posx(DR_BASE))
 
+def z_axis_alignment(axes_data, joint_data):
+    from DSR_ROBOT2 import parallel_axis, DR_AXIS_Z, mwait, DR_BASE
+    vect = [0, 0, -1]
+    parallel_axis(vect, DR_AXIS_Z, DR_BASE)
+    mwait()
 
 # def move_to_tile_place_position(placement_index: int):
 #     from DSR_ROBOT2 import (
@@ -133,19 +138,13 @@ def move_absoulte(x: float, y: float, z: float, w: float=0.0, p: float=0.0, r:fl
 def move_to_tile_place_position(placement_index: int):
     from DSR_ROBOT2 import posx, movel, mwait, DR_BASE
 
-    print("2222222222222222222222222222222222222222")
-    # 1. 7번 타일의 실제 측정 좌표 (사용자가 주신 값)
-    pos_7 = [363.055, 242.126, 478.088, 104.028, -161.497, -78.935]
-    tile_wid = 70.0  # mm
+    tool_pre_tilt = [369.025, 160.678, 196.749, 44.152, -179.9, -137.748]
 
-    # 2. 7번이 (-70, -70) 오프셋을 가진 위치이므로, 
-    # 역으로 5번(중앙, 0,0) 기준 좌표를 계산합니다.
-    # index 0은 X, index 2는 Z라고 가정할 때:
-    base_x = pos_7[0] + tile_wid  # 363.055 + 70
-    base_z = pos_7[2] + tile_wid  # 478.088 + 70
+    tile_wid = 5.0  # mm
+
+    base_x = tool_pre_tilt[0]
+    base_z = tool_pre_tilt[2]
     
-    # 기준 자세 (5번 타일 위치)
-    pre_place = posx([base_x, pos_7[1], base_z, pos_7[3], pos_7[4], pos_7[5]])
 
     # 타일 배치 오프셋 (중앙 5번 기준)
     tile_offsets = {
@@ -165,20 +164,17 @@ def move_to_tile_place_position(placement_index: int):
 
     dx, dz = tile_offsets[placement_index]
 
-    target = [base_x, pos_7[1], base_z, pos_7[3], pos_7[4], pos_7[5]]
+    target = [base_x, tool_pre_tilt[1], base_z, tool_pre_tilt[3], tool_pre_tilt[4], tool_pre_tilt[5]]
     target[0] += dx
     target[2] += dz
 
-    target[2] = 300.0
     target_pos = posx(target)
 
     print(f"[PLACE_TILE] Index={placement_index} 이동 좌표: {target_pos}")
 
     # 4. 로봇 이동
     # 안전을 위해 접근 높이(Y)를 조절하는 로직을 추가하는 것이 좋습니다.
-    ret = movel(target_pos, vel=30, acc=30, ref=DR_BASE) 
-    print(ret)
-    print("33333333333333333333333333")
+    movel(target_pos, vel=30, acc=30, ref=DR_BASE) 
     mwait()
 
 def perform_task_once(i:int):
@@ -188,30 +184,30 @@ def perform_task_once(i:int):
 
     from DSR_ROBOT2 import posx, posj, movej, movel, mwait, wait, DR_BASE
 
-    # ----------------------------
-    # 기준 자세
-    # ----------------------------
     JReady = posj([0, 0, 90, 0, 90, 0])
 
     # ----------------------------
     # 툴 파지전
     # ----------------------------
-    tool_pre_grip_j = posx([238.763, -373.264, 301.064, 57.57767868041992, -179.96800231933594, -122.38433074951172])
+    tool_pre_grip = [238.763, -373.264, 301.064]
     
     # ----------------------------
     # 툴 파지 위치
     # ----------------------------
     #tool_grip_x = posx([238.763, -373.264, 331.064 - 205.0, 57.57767868041992, -179.96800231933594, -122.38433074951172])
-    tool_grip_x = posx([235.122, -362.591, 123.0, 96.12, -179.972, 96.247])
+    tool_grip = [235.122, -362.591, 123.0]
 
 
     # ----------------------------
     # 툴 잡고 뒤로 빼기
     # ----------------------------
     #retreat_x = posx([237.073, -227.493, 331.064- 205.0, 57.57767868041992, -179.96800231933594, -122.38433074951172])
-    retreat_x = posx([235.122, -232.591, 123.0, 96.12, -179.972, 96.247])
+    retreat_x = [235.122, -232.591, 123.0]
 
-
+    #--------------------------
+    tool_pre_tilt = [369.025, 160.678, 196.749, 44.152, -179.9, -137.748]
+    tool_tilt = [369.025, 160.678, 196.749, 91.799, -167.285, -90.1]
+    #------------------------------------------------
 
     print("[TASK] 1. movej -> Home")
     movej(JReady, vel=VELOCITY, acc=ACC)
@@ -219,44 +215,48 @@ def perform_task_once(i:int):
     mwait()
     wait(1.0)
 
+    print("[TASK] 2. tool pick pre-position (joint)")
+    move_absoulte(tool_pre_grip[0], tool_pre_grip[1], tool_pre_grip[2])
 
-    print("180도 회전")
+    print("측정 180도 회전")
+    move_relative(0.0, 0.0, 0.0, dw=-180.0)
+
+    wait(3.0)
+
+    print("파지 180도 회전")
     move_relative(0.0, 0.0, 0.0, dw=180.0)
 
 
-    print("[TASK] 2. tool pick pre-position (joint)")
-    movel(tool_pre_grip_j, vel=VELOCITY, acc=ACC, ref=DR_BASE)
-    mwait()
-    wait(0.5)
-
     print("[TASK] 5. tool grip position (cartesian fine approach)")
-    movel(tool_grip_x, vel=VELOCITY, acc=ACC, ref=DR_BASE)
-    mwait()
-    wait(0.5)
-
+    move_absoulte(tool_grip[0], tool_grip[1], tool_grip[2])
+ 
     print("[TASK] 6. close gripper")
     gripper.close_gripper()
     wait(1.5)
 
     print("[TASK] 7. retreat with tool (joint)")
-    movel(retreat_x, vel=VELOCITY, acc=ACC, ref=DR_BASE)
-    mwait()
-    wait(0.5)
-
-    move_relative(0.0, 0.0, 0.0, -180.0)
+    move_absoulte(retreat_x[0], retreat_x[1], retreat_x[2]+10.0)
+    move_relative(0.0, 0.0, 0.0, dw=-180.0)
 
     print("[TASK] 12. move to place center (cartesian fine pose)")
-    print("111111111111111111111111111111111111111111111")
     move_to_tile_place_position(i) #1~9
+
+    print("접근")
+    move_relative(0.0, 3.68, -5.0)
     mwait()
-    wait(0.5)
 
-    print(f"[TASK] 13. Release Tile at position {i}")
-    gripper.open_gripper() # 타일을 놓음
-    wait(1.0)
+    print("기울이기")
+    movel(tool_tilt, 30, 30, ref=DR_BASE)
+    mwait()  
 
-    # print("[TASK] 13. bending motion")
-    # move_relative(0.0, 0.0, 0.0, dw=10.0)
+    print("압착")
+    move_relative(0.0, 1.0, 0.0)
+    mwait() 
+
+    print("후퇴")
+    move_relative(0.0, -23.68, 0.0)
+    mwait()
+
 
     print("[TASK] 15. return Home")
     movej(JReady, vel=VELOCITY, acc=ACC)
