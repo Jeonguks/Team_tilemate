@@ -185,12 +185,86 @@
             color: #fff;
             box-shadow: 0 1px 8px rgba(229,57,53,0.4);
         }
+        /* ── 시멘트 대기 모달 ── */
+        #cement-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        #cement-modal.show { display: flex; }
+        #cement-modal-box {
+            background: white;
+            border-radius: 20px;
+            padding: 44px 48px;
+            width: 460px;
+            max-width: 95vw;
+            text-align: center;
+            box-shadow: 0 12px 48px rgba(0,0,0,0.3);
+            animation: cement-modal-in 0.25s ease;
+        }
+        @keyframes cement-modal-in {
+            from { transform: scale(0.85); opacity: 0; }
+            to   { transform: scale(1);    opacity: 1; }
+        }
+        #cement-modal-box .cement-emoji {
+            font-size: 3.5em;
+            margin-bottom: 16px;
+        }
+        #cement-modal-box h2 {
+            color: #e65100;
+            font-size: 1.5em;
+            margin: 0 0 12px;
+        }
+        #cement-modal-box p {
+            color: #555;
+            font-size: 1.05em;
+            line-height: 1.6;
+            margin: 0 0 8px;
+        }
+        #cement-modal-box .cement-hint {
+            display: inline-block;
+            margin-top: 18px;
+            background: #fff3e0;
+            border: 2px solid #ff8f00;
+            border-radius: 10px;
+            padding: 10px 24px;
+            color: #e65100;
+            font-weight: bold;
+            font-size: 1.05em;
+            letter-spacing: 1px;
+        }
+        #cement-modal-box .cement-mic {
+            font-size: 2em;
+            margin-top: 18px;
+            animation: cement-mic-blink 1.2s step-start infinite;
+            display: block;
+        }
+        @keyframes cement-mic-blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.2; }
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
     <header><h1>TILING MONITOR</h1></header>
+
+    <!-- 시멘트 대기 모달 -->
+    <div id="cement-modal">
+        <div id="cement-modal-box">
+            <div class="cement-emoji">🧱</div>
+            <h2>시멘트 작업 중</h2>
+            <p>타일에 시멘트를 발라주세요.</p>
+            <p>작업이 끝나면 아래와 같이 말해주세요.</p>
+            <div class="cement-hint">"끝났어"</div>
+            <span class="cement-mic">🎙️</span>
+        </div>
+    </div>
 
     <div class="info-grid">
         <div id="timer-container">타일링 시간: <span id="timer">00 : 00 : 00</span></div>
@@ -760,6 +834,14 @@
         document.getElementById('robot-state').innerText = data.state || "대기";
         document.getElementById('job-count').innerText  = data.completed_jobs || 0;
 
+        // ── 시멘트 대기 모달 ──
+        const cementModal = document.getElementById('cement-modal');
+        if (data.cement_state === 'waiting') {
+            cementModal.classList.add('show');
+        } else {
+            cementModal.classList.remove('show');
+        }
+
         const forceZ = data.force_z !== undefined ? parseFloat(data.force_z).toFixed(2) : '0.00';
         const forceTotal = data.force_total !== undefined ? parseFloat(data.force_total).toFixed(2) : '0.00';
         document.getElementById('force-z').innerText     = forceZ;
@@ -1107,14 +1189,24 @@
         Object.keys(activeTimers).forEach(key => delete activeTimers[key]);
         document.getElementById('estop-overlay').style.display = 'none';
         document.getElementById('finish-popup').classList.remove('show');
+        // 진행률 바 즉시 초기화
+        document.getElementById('overall-progress-bar').style.width = '0%';
+        document.getElementById('overall-progress-text').innerText = '0.0%';
+        document.getElementById('cement-modal').classList.remove('show');
         for (let i = 1; i <= TOTAL_TILES; i++) {
             tileState[i] = 'empty';
             const el = document.getElementById(`tile-${i}`);
-            if (el) { el.classList.remove('working', 'coated', 'running', 'finished'); el.style.backgroundColor = ''; el.style.borderColor = ''; el.innerText = ''; el.style.display = ''; }
+            if (el) { el.classList.remove('working', 'coated', 'running', 'finished'); el.style.backgroundColor = ''; el.style.borderColor = ''; el.innerText = ''; el.style.backgroundImage = ''; }
         }
         tiles3D.forEach(mesh => mesh.material.color.setHex(0xaaaaaa));
         updateProcessStep(0); hidePatternPreview();
-        database.ref('robot_status').update({ completed_jobs: 0, current_step: 0, state: '대기', inspect_no: 0, tile_level: 0, press_no: 0 });
+        database.ref('robot_status').update({
+            completed_jobs: 0, current_step: 0, state: '대기',
+            inspect_no: 0, tile_level: 0, press_no: 0,
+            overall_progress: 0.0, tile_progress: 0.0,
+            tile_step: 0, working_tile: 0,
+            cement_state: 'idle',
+        });
         database.ref('robot_command').set({ action: 'reset', timestamp: Date.now() });
     }
 

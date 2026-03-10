@@ -28,6 +28,7 @@ import os
 import time
 import math
 import threading
+import tempfile
 import numpy as np
 
 import rclpy
@@ -56,6 +57,15 @@ try:
 except ImportError as _stt_err:
     _STT_AVAILABLE = False
     print(f"[WARNING] STT/keyword_extraction import 실패: {_stt_err}")
+
+# TTS (gtts + pygame 또는 playsound)
+try:
+    from gtts import gTTS
+    import pygame
+    _TTS_AVAILABLE = True
+except ImportError:
+    _TTS_AVAILABLE = False
+    print("[WARNING] gTTS 또는 pygame 없음. TTS 비활성화. pip install gtts pygame")
 
 
 # --------------------------------------------------
@@ -193,6 +203,19 @@ class FirebaseBridgeNode(Node):
         else:
             self._stt = None
             self._keyword_extractor = None
+
+        # --------------------------------------------------
+        # 시멘트 대기 상태 플래그
+        # --------------------------------------------------
+        self._cement_waiting = False        # True면 "끝났어" 대기 중
+        self._cement_wait_thread = None
+
+        # pygame 초기화 (TTS 재생용)
+        if _TTS_AVAILABLE:
+            try:
+                pygame.mixer.init()
+            except Exception as e:
+                self.get_logger().warn(f"[TTS] pygame.mixer 초기화 실패: {e}")
 
         self._cmd_thread = threading.Thread(
             target=self._watch_firebase_command,
@@ -360,6 +383,25 @@ class FirebaseBridgeNode(Node):
         if tile_step == 5 and self._last_tile_step_fb != 5:
             completed_jobs = max(completed_jobs, tile_index + 1)
             self._last_completed_jobs_fb = completed_jobs
+
+        # --------------------------------------------------
+        # 파지(1) 완료 후 부착(2) 진입 직전 → 시멘트 TTS + 대기
+        # tile_step이 1 → 2로 바뀌는 순간 1회만 트리거
+        # --------------------------------------------------
+        if (
+            tile_step == 2
+            and self._last_tile_step_fb == 1
+            and not self._cement_waiting
+        ):
+            self.get_logger().info("[CEMENT] 파지 완료(1→2 전환) 감지 → 시멘트 TTS + 대기 시작")
+            self._cement_waiting = True
+            self.ref.update({"state": "시멘트 작업 대기 중"})
+
+            self._cement_wait_thread = threading.Thread(
+                target=self._cement_wait_flow,
+                daemon=True,
+            )
+            self._cement_wait_thread.start()
 
         self._last_tile_step_fb = tile_step
 
@@ -531,6 +573,97 @@ class FirebaseBridgeNode(Node):
             publisher.publish(msg)
             if i < retries - 1:
                 time.sleep(interval)
+
+    # ==================================================
+    # TTS 헬퍼
+    # ==================================================
+    def _speak(self, text: str):
+        """
+        텍스트를 한국어 TTS로 재생합니다.
+        gTTS로 mp3 생성 후 pygame으로 재생.
+        """
+        if not _TTS_AVAILABLE:
+            self.get_logger().warn(f"[TTS] 비활성화 상태. 출력 생략: '{text}'")
+            return
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                tmp_path = f.name
+            tts = gTTS(text=text, lang="ko")
+            tts.save(tmp_path)
+
+            pygame.mixer.music.load(tmp_path)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+
+            os.remove(tmp_path)
+            self.get_logger().info(f"[TTS] 재생 완료: '{text}'")
+        except Exception as e:
+            self.get_logger().error(f"[TTS] 오류: {e}")
+
+    # ==================================================
+    # 시멘트 대기 흐름 (STEP 1 완료 → 대기 → STEP 2 재개)
+    # ==================================================
+    def _cement_wait_flow(self):
+        """
+        1) TTS: "타일에 시멘트를 발라주세요"
+        2) STT 루프: "끝났어" 가 감지될 때까지 반복 청취
+        3) TTS: "작업을 재개할게요"
+        4) 로봇에 resume 신호 (Firebase robot_command)
+        """
+        try:
+            # 1) 안내 TTS
+            self._speak("타일에 시멘트를 발라주세요")
+            self.get_logger().info("[CEMENT] TTS 완료. 음성 대기 시작...")
+            self.ref.update({
+                "state": "시멘트 작업 대기 중 - '끝났어' 라고 말해주세요",
+                "cement_state": "waiting",   # ← 웹 배너 표시
+            })
+
+            # 2) "끝났어" 감지 루프
+            DONE_KEYWORDS = ["끝났어", "끝났다", "다 됐어", "완료", "됐어", "다됐어"]
+            recognized = False
+
+            if self._stt is None:
+                self.get_logger().warn("[CEMENT] STT 없음. 5초 후 자동 재개합니다.")
+                time.sleep(5.0)
+                recognized = True
+            else:
+                while not recognized:
+                    try:
+                        self.get_logger().info("[CEMENT] 음성 청취 중...")
+                        text = self._stt.speech2text()
+                        self.get_logger().info(f"[CEMENT] STT 결과: '{text}'")
+
+                        # 키워드 포함 여부 확인
+                        if any(kw in text for kw in DONE_KEYWORDS):
+                            recognized = True
+                        else:
+                            self.get_logger().info("[CEMENT] 키워드 미감지. 재청취...")
+                            self._speak("아직 시멘트 작업 중인가요? 끝나면 '끝났어'라고 말해주세요")
+                    except Exception as e:
+                        self.get_logger().error(f"[CEMENT] STT 오류: {e}")
+                        time.sleep(1.0)
+
+            # 3) 재개 TTS
+            self._speak("작업을 재개할게요")
+            self.get_logger().info("[CEMENT] 재개 TTS 완료. Step 2로 진행...")
+
+            # 4) 로봇 재개 신호
+            self.ref.update({
+                "state": "시멘트 완료 - 작업 재개",
+                "cement_state": "done",   # ← 웹 배너 숨김
+            })
+            self.cmd_ref.update({
+                "action": "cement_done",          # TaskManager가 이 액션을 구독해서 Step 2 진행
+                "timestamp": int(time.time() * 1000),
+            })
+            self.get_logger().info("[CEMENT] Firebase cement_done 신호 전송 완료")
+
+        except Exception as e:
+            self.get_logger().error(f"[CEMENT] _cement_wait_flow 오류: {e}")
+        finally:
+            self._cement_waiting = False
 
     # ==================================================
     # STT + Keyword Extraction
