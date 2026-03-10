@@ -400,6 +400,23 @@ class PlaceTileActionServer(Node):
             movel(posx(target), ref=DR_BASE, vel=30, acc=30)
             mwait()
 
+
+        def move_absoulte(x: float, y: float, z: float, w: float=0.0, p: float=0.0, r:float=0.0):
+            from DSR_ROBOT2 import posx, posj, movej, movel, mwait, wait, DR_BASE, get_current_posx
+
+            cur, _ = get_current_posx(DR_BASE)
+            target = [
+                x,
+                y,
+                z,
+                cur[3] + w,
+                cur[4] + p,
+                cur[5] + r,
+            ]
+            movel(posx(target), ref=DR_BASE, vel=30, acc=30)
+            mwait()
+            print(get_current_posx(DR_BASE))
+
         if self.check_abort(goal_handle):
             return (False, 0.0, "canceled")
 
@@ -466,14 +483,14 @@ class PlaceTileActionServer(Node):
         if self.check_abort(goal_handle):
             return (False, press_depth, "canceled")
 
-        # 5) 그리퍼 오픈
-        self.publish_feedback(
-            goal_handle,
-            "release",
-            self.read_ft_guess(),
-            press_depth,
-            0.95,
-        )
+        # # 5) 그리퍼 오픈
+        # self.publish_feedback(
+        #     goal_handle,
+        #     "release",
+        #     self.read_ft_guess(),
+        #     press_depth,
+        #     0.95,
+        # )
 
         # 6) 중간 체크포인트 이동
         move_relative(0.0, -30.0, 0.0)
@@ -482,16 +499,41 @@ class PlaceTileActionServer(Node):
             return (False, press_depth, "canceled")
 
         # 7) 홈 복귀
+        # self.publish_feedback(goal_handle, "return_home", None, press_depth, 0.98)
+        movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
+        mwait()
+
+        # self.publish_feedback(goal_handle, "done", None, press_depth, 1.0)
+
+        if ok:
+            return (True, press_depth, message)
+    
+        # 8) 툴 반납 위치 이동
+
+        tool_pre_release = [238.763, -373.264, 301.064]
+        tool_release = [235.122, -362.591, 123.0]
+
+        move_absoulte(tool_pre_release[0], tool_pre_release[1], tool_pre_release[2])
+
+        move_absoulte(tool_release[0], tool_release[1], tool_release[2])
+
+        # 8) 툴 반납후 상단 이동
+
+        move_relative(0.0, 0.0, 30.0)
+
+
+
+        self.gripper.open_gripper()
+
+        # 9) 홈 복귀
         self.publish_feedback(goal_handle, "return_home", None, press_depth, 0.98)
         movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
         mwait()
 
         self.publish_feedback(goal_handle, "done", None, press_depth, 1.0)
 
-        if ok:
-            return (True, press_depth, message)
-        return (False, press_depth, message)
 
+        return (False, press_depth, message)
 
 def main(args=None):
     rclpy.init(args=args)
