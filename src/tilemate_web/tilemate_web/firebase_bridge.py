@@ -606,59 +606,101 @@ class FirebaseBridgeNode(Node):
     # ==================================================
     def _cement_wait_flow(self):
         """
-        1) TTS: "타일에 시멘트를 발라주세요"
-        2) STT 루프: "끝났어" 가 감지될 때까지 반복 청취
-        3) TTS: "작업을 재개할게요"
-        4) 로봇에 resume 신호 (Firebase robot_command)
+        새 시나리오 (2단계):
+
+        [1단계] 타일 파지 대기
+          - TTS: "타일을 잡고 시멘트를 발라주세요"
+          - STT: "타일 잡았어" 계열 감지
+          - → 로봇에 타일 내려놓기 신호 (tile_release)
+
+        [2단계] 시멘트 도포 대기
+          - TTS: "시멘트를 다 바르면 타일을 주세요"
+          - STT: "시멘트 다 발랐어" 계열 감지
+          - TTS: "작업을 재개할게요"
+          - → 로봇 재개 신호 (cement_done)
         """
         try:
-            # 1) 안내 TTS
-            self._speak("타일에 시멘트를 발라주세요")
-            self.get_logger().info("[CEMENT] TTS 완료. 음성 대기 시작...")
+            # ── 1단계: 타일 파지 안내 ──────────────────────
+            # 모달 먼저 띄우고 → TTS 재생
             self.ref.update({
-                "state": "시멘트 작업 대기 중 - '끝났어' 라고 말해주세요",
-                "cement_state": "waiting",   # ← 웹 배너 표시
+                "state": "타일 파지 대기 중 - 타일을 잡으면 '타일 잡았어' 라고 말해주세요",
+                "cement_state": "waiting_pick",
             })
+            self.get_logger().info("[CEMENT] 1단계: 타일 파지 대기")
+            self._speak("타일을 잡고 시멘트를 발라주세요")
 
-            # 2) "끝났어" 감지 루프
-            DONE_KEYWORDS = ["끝났어", "끝났다", "다 됐어", "완료", "됐어", "다됐어"]
-            recognized = False
+            PICK_KEYWORDS   = ["잡았어", "잡았다", "집었어", "잡았음", "타일 잡았어", "집었다"]
+            CEMENT_KEYWORDS = ["발랐어", "발랐다", "다 발랐어", "시멘트 다 발랐어", "완료", "됐어", "다됐어", "끝났어", "끝났다"]
 
+            # STT로 "타일 잡았어" 대기
             if self._stt is None:
-                self.get_logger().warn("[CEMENT] STT 없음. 5초 후 자동 재개합니다.")
+                self.get_logger().warn("[CEMENT] STT 없음. 5초 후 자동 진행합니다.")
                 time.sleep(5.0)
-                recognized = True
             else:
+                recognized = False
                 while not recognized:
                     try:
-                        self.get_logger().info("[CEMENT] 음성 청취 중...")
+                        self.get_logger().info("[CEMENT] 🎙 타일 파지 음성 대기 중...")
                         text = self._stt.speech2text()
                         self.get_logger().info(f"[CEMENT] STT 결과: '{text}'")
-
-                        # 키워드 포함 여부 확인
-                        if any(kw in text for kw in DONE_KEYWORDS):
+                        if any(kw in text for kw in PICK_KEYWORDS):
                             recognized = True
                         else:
                             self.get_logger().info("[CEMENT] 키워드 미감지. 재청취...")
-                            self._speak("아직 시멘트 작업 중인가요? 끝나면 '끝났어'라고 말해주세요")
+                            self._speak("타일을 잡으면 타일 잡았어 라고 말해주세요")
                     except Exception as e:
                         self.get_logger().error(f"[CEMENT] STT 오류: {e}")
                         time.sleep(1.0)
 
-            # 3) 재개 TTS
-            self._speak("작업을 재개할게요")
-            self.get_logger().info("[CEMENT] 재개 TTS 완료. Step 2로 진행...")
-
-            # 4) 로봇 재개 신호
-            self.ref.update({
-                "state": "시멘트 완료 - 작업 재개",
-                "cement_state": "done",   # ← 웹 배너 숨김
-            })
+            # → 로봇에 타일 내려놓기 신호
+            self.get_logger().info("[CEMENT] 타일 파지 확인 → 타일 내려놓기 신호 전송")
+            self.ref.update({"state": "타일 내려놓는 중", "cement_state": "tile_release"})
             self.cmd_ref.update({
-                "action": "cement_done",          # TaskManager가 이 액션을 구독해서 Step 2 진행
+                "action": "tile_release",
                 "timestamp": int(time.time() * 1000),
             })
-            self.get_logger().info("[CEMENT] Firebase cement_done 신호 전송 완료")
+
+            # ── 2단계: 시멘트 도포 대기 ────────────────────
+            # 모달 먼저 띄우고 → TTS 재생
+            self.ref.update({
+                "state": "시멘트 도포 대기 중 - 다 바르면 '시멘트 다 발랐어' 라고 말해주세요",
+                "cement_state": "waiting_cement",
+            })
+            self.get_logger().info("[CEMENT] 2단계: 시멘트 도포 대기")
+            self._speak("시멘트를 다 바르면 타일을 주세요")
+
+            # STT로 "시멘트 다 발랐어" 대기
+            if self._stt is None:
+                self.get_logger().warn("[CEMENT] STT 없음. 5초 후 자동 재개합니다.")
+                time.sleep(5.0)
+            else:
+                recognized = False
+                while not recognized:
+                    try:
+                        self.get_logger().info("[CEMENT] 🎙 시멘트 완료 음성 대기 중...")
+                        text = self._stt.speech2text()
+                        self.get_logger().info(f"[CEMENT] STT 결과: '{text}'")
+                        if any(kw in text for kw in CEMENT_KEYWORDS):
+                            recognized = True
+                        else:
+                            self.get_logger().info("[CEMENT] 키워드 미감지. 재청취...")
+                            self._speak("시멘트를 다 바르면 시멘트 다 발랐어 라고 말해주세요")
+                    except Exception as e:
+                        self.get_logger().error(f"[CEMENT] STT 오류: {e}")
+                        time.sleep(1.0)
+
+            # → 재개 TTS + 로봇 재개 신호
+            self._speak("작업을 재개할게요")
+            self.get_logger().info("[CEMENT] 재개 TTS 완료. Step 2로 진행...")
+            self.ref.update({
+                "state": "시멘트 완료 - 작업 재개",
+                "cement_state": "done",
+            })
+            self.cmd_ref.update({
+                "action": "cement_done",
+                "timestamp": int(time.time() * 1000),
+            })
+            self.get_logger().info("[CEMENT] cement_done 신호 전송 완료")
 
         except Exception as e:
             self.get_logger().error(f"[CEMENT] _cement_wait_flow 오류: {e}")

@@ -130,44 +130,85 @@ def get_command() -> dict:
 # ══════════════════════════════════════════════════════
 
 def cement_wait_flow(stt):
-    DONE_KEYWORDS = ["끝났어", "끝났다", "다 됐어", "완료", "됐어", "다됐어"]
+    PICK_KEYWORDS   = ["잡았어", "잡았다", "집었어", "잡았음", "타일 잡았어", "집었다"]
+    CEMENT_KEYWORDS = ["발랐어", "발랐다", "다 발랐어", "시멘트 다 발랐어", "완료", "됐어", "다됐어", "끝났어", "끝났다"]
 
-    speak("타일에 시멘트를 발라주세요")
+    # ── 1단계: 타일 파지 대기 ──────────────────────────
+    # 모달 먼저 띄우고 → TTS 재생
     fb_update({
-        "state": "시멘트 작업 대기 중 - '끝났어' 라고 말해주세요",
-        "cement_state": "waiting",
+        "state": "타일 파지 대기 중 - '타일 잡았어' 라고 말해주세요",
+        "cement_state": "waiting_pick",
     })
-    print("[CEMENT] 시멘트를 다 바르면 '끝났어'라고 말해주세요.\n")
+    speak("타일을 잡고 시멘트를 발라주세요")
+    print("[CEMENT] 🤲 타일을 잡으면 '타일 잡았어'라고 말해주세요.\n")
 
     recognized = False
-
     if stt is None:
         while not recognized:
-            user_input = input("  > 말할 내용 입력 (예: 끝났어): ").strip()
-            if any(kw in user_input for kw in DONE_KEYWORDS):
+            user_input = input("  > 말할 내용 (예: 타일 잡았어): ").strip()
+            if any(kw in user_input for kw in PICK_KEYWORDS):
                 recognized = True
             else:
                 print("  [CEMENT] 키워드 미감지. 다시 입력하세요.")
-                speak("아직 시멘트 작업 중인가요? 끝나면 끝났어라고 말해주세요")
+                speak("타일을 잡으면 타일 잡았어 라고 말해주세요")
     else:
         while not recognized:
             try:
-                print("[CEMENT] 음성 청취 중...")
+                print("[CEMENT] 🎙 타일 파지 음성 대기 중...")
                 text = stt.speech2text()
                 print(f"[CEMENT] STT 결과: '{text}'")
-                if any(kw in text for kw in DONE_KEYWORDS):
+                if any(kw in text for kw in PICK_KEYWORDS):
                     recognized = True
                 else:
                     print("[CEMENT] 키워드 미감지. 재청취...")
-                    speak("아직 시멘트 작업 중인가요? 끝나면 끝났어라고 말해주세요")
+                    speak("타일을 잡으면 타일 잡았어 라고 말해주세요")
             except Exception as e:
                 print(f"[CEMENT] STT 오류: {e}")
                 time.sleep(1.0)
 
-    speak("작업을 재개할게")
-    fb_update({"state": "시멘트 완료 - Step 2 재개", "cement_state": "done"})
+    # → 로봇 타일 내려놓기 신호
+    print("[CEMENT] 타일 파지 확인 → 타일 내려놓기 신호 전송")
+    fb_update({"state": "타일 내려놓는 중", "cement_state": "tile_release"})
+    fb_cmd_send({"action": "tile_release", "timestamp": int(time.time() * 1000)})
+
+    # ── 2단계: 시멘트 도포 대기 ────────────────────────
+    # 모달 먼저 띄우고 → TTS 재생
+    fb_update({
+        "state": "시멘트 도포 대기 중 - '시멘트 다 발랐어' 라고 말해주세요",
+        "cement_state": "waiting_cement",
+    })
+    speak("시멘트를 다 바르면 타일을 주세요")
+    print("[CEMENT] 🧱 시멘트를 다 바르면 '시멘트 다 발랐어'라고 말해주세요.\n")
+
+    recognized = False
+    if stt is None:
+        while not recognized:
+            user_input = input("  > 말할 내용 (예: 시멘트 다 발랐어): ").strip()
+            if any(kw in user_input for kw in CEMENT_KEYWORDS):
+                recognized = True
+            else:
+                print("  [CEMENT] 키워드 미감지. 다시 입력하세요.")
+                speak("시멘트를 다 바르면 시멘트 다 발랐어 라고 말해주세요")
+    else:
+        while not recognized:
+            try:
+                print("[CEMENT] 🎙 시멘트 완료 음성 대기 중...")
+                text = stt.speech2text()
+                print(f"[CEMENT] STT 결과: '{text}'")
+                if any(kw in text for kw in CEMENT_KEYWORDS):
+                    recognized = True
+                else:
+                    print("[CEMENT] 키워드 미감지. 재청취...")
+                    speak("시멘트를 다 바르면 시멘트 다 발랐어 라고 말해주세요")
+            except Exception as e:
+                print(f"[CEMENT] STT 오류: {e}")
+                time.sleep(1.0)
+
+    # → 재개
+    speak("작업을 재개할게요")
+    fb_update({"state": "시멘트 완료 - 작업 재개", "cement_state": "done"})
     fb_cmd_send({"action": "cement_done", "timestamp": int(time.time() * 1000)})
-    print("[CEMENT] Step 2 (타일 부착) 재개")
+    print("[CEMENT] ✅ Step 2 (타일 부착) 재개")
 
 
 # ══════════════════════════════════════════════════════

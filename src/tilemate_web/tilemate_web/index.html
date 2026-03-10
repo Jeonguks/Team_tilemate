@@ -257,12 +257,24 @@
     <!-- 시멘트 대기 모달 -->
     <div id="cement-modal">
         <div id="cement-modal-box">
-            <div class="cement-emoji">🧱</div>
-            <h2>시멘트 작업 중</h2>
-            <p>타일에 시멘트를 발라주세요.</p>
-            <p>작업이 끝나면 아래와 같이 말해주세요.</p>
-            <div class="cement-hint">"끝났어"</div>
-            <span class="cement-mic">🎙️</span>
+            <!-- 1단계: 타일 파지 대기 -->
+            <div id="cement-phase-pick">
+                <div class="cement-emoji">🤲</div>
+                <h2>타일을 잡아주세요</h2>
+                <p>타일을 잡고 시멘트를 발라주세요.</p>
+                <p>타일을 잡으면 아래와 같이 말해주세요.</p>
+                <div class="cement-hint">"타일 잡았어"</div>
+                <span class="cement-mic">🎙️</span>
+            </div>
+            <!-- 2단계: 시멘트 도포 대기 -->
+            <div id="cement-phase-cement" style="display:none;">
+                <div class="cement-emoji">🧱</div>
+                <h2>시멘트를 발라주세요</h2>
+                <p>타일에 시멘트를 다 바른 후</p>
+                <p>아래와 같이 말해주세요.</p>
+                <div class="cement-hint">"시멘트 다 발랐어"</div>
+                <span class="cement-mic">🎙️</span>
+            </div>
         </div>
     </div>
 
@@ -834,9 +846,20 @@
         document.getElementById('robot-state').innerText = data.state || "대기";
         document.getElementById('job-count').innerText  = data.completed_jobs || 0;
 
-        // ── 시멘트 대기 모달 ──
+        // ── 시멘트 대기 모달 (2단계) ──
         const cementModal = document.getElementById('cement-modal');
-        if (data.cement_state === 'waiting') {
+        const phasePick   = document.getElementById('cement-phase-pick');
+        const phaseCement = document.getElementById('cement-phase-cement');
+        const cs = data.cement_state || '';
+        if (cs === 'waiting_pick') {
+            // 1단계: 타일 잡아주세요
+            phasePick.style.display   = 'block';
+            phaseCement.style.display = 'none';
+            cementModal.classList.add('show');
+        } else if (cs === 'waiting_cement') {
+            // 2단계: 시멘트 발라주세요
+            phasePick.style.display   = 'none';
+            phaseCement.style.display = 'block';
             cementModal.classList.add('show');
         } else {
             cementModal.classList.remove('show');
