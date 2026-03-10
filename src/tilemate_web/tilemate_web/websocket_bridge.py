@@ -34,6 +34,8 @@ import numpy as np
 import websockets
 
 # ── 설정 ──────────────────────────────────────────────────────
+DEPTH_CLIP_MIN = 100   # mm - 깊이 시각화 최솟값
+DEPTH_CLIP_MAX = 500   # mm - 깊이 시각화 최댓값
 WS_HOST = "0.0.0.0"   # 모든 인터페이스에서 수신
 WS_PORT = 8765
 
@@ -167,23 +169,24 @@ class WsImageBridgeNode(Node):
                 row_start = r * msg.step
                 depth[r] = raw_depth[row_start: row_start + msg.width * 2].view(np.uint16)
 
-            # 유효 픽셀만 사용해 범위 계산
+            # 유효 픽셀만 사용해 실제 범위 계산 (메타데이터용)
             valid = depth[depth > 0]
             if valid.size == 0:
                 return
             d_min = int(valid.min())
             d_max = int(valid.max())
 
-            # 시각화용: 깊이값을 0~255 컬러맵으로 변환
+            # 시각화용: 관심 범위(DEPTH_CLIP_MIN~DEPTH_CLIP_MAX)로 클리핑 후 컬러맵 변환
             depth_f = depth.astype(np.float32)
             depth_f[depth == 0] = 0
-            if d_max > d_min:
-                norm = ((depth_f - d_min) / (d_max - d_min) * 255).clip(0, 255).astype(np.uint8)
-            else:
-                norm = np.zeros_like(depth, dtype=np.uint8)
+            clip_min = float(DEPTH_CLIP_MIN)
+            clip_max = float(DEPTH_CLIP_MAX)
+            norm = ((depth_f - clip_min) / (clip_max - clip_min) * 255).clip(0, 255).astype(np.uint8)
             colored = cv2.applyColorMap(norm, cv2.COLORMAP_JET)
-            # 무효 픽셀은 검정으로
+            # 무효 픽셀 및 범위 밖 픽셀은 검정으로
             colored[depth == 0] = 0
+            colored[depth < DEPTH_CLIP_MIN] = 0
+            colored[depth > DEPTH_CLIP_MAX] = 0
 
             # PNG 압축
             _, buf = cv2.imencode(".png", colored)
