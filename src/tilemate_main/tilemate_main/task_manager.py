@@ -13,7 +13,7 @@ from std_srvs.srv import Trigger
 from action_msgs.msg import GoalStatus
 
 from tilemate_msgs.srv import Inspect
-from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile
+from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile, Cowork
 from tilemate_main.robot_config import RobotConfig
 
 
@@ -31,10 +31,11 @@ class TaskManagerNode(Node):
     # ----------------------------
     TILE_STEP_IDLE = 0
     TILE_STEP_PICK = 1
-    TILE_STEP_PLACE = 2
-    TILE_STEP_INSPECT = 3
-    TILE_STEP_COMPACT = 4
-    TILE_STEP_DONE = 5
+    TILE_STEP_COWORK = 2
+    TILE_STEP_PLACE = 3
+    TILE_STEP_INSPECT = 4
+    TILE_STEP_COMPACT = 5
+    TILE_STEP_DONE = 6
 
     def __init__(self):
         super().__init__("task_manager_node")
@@ -87,12 +88,21 @@ class TaskManagerNode(Node):
             f"{robot_ns}/tile/pick",
             callback_group=self.cb_group,
         )
+
+        self.cowork_client = ActionClient(
+            self,
+            Cowork,
+            f"{robot_ns}/tile/cowork",
+            callback_group=self.cb_group,
+        )
+
         self.place_client = ActionClient(
             self,
             PlaceTile,
             f"{robot_ns}/tile/place_press",
             callback_group=self.cb_group,
         )
+
         self.inspect_client = self.create_client(
             Inspect,
             f"{robot_ns}/tile/inspect",
@@ -111,6 +121,8 @@ class TaskManagerNode(Node):
 
         self.get_logger().info("\033[94m [1/4] [TASK MANAGER] initialize Done!\033[0m")
         self.get_logger().info(f"pick action    : {robot_ns}/tile/pick")
+        self.get_logger().info(f"cowork action  : {robot_ns}/tile/cowork")
+
         self.get_logger().info(f"place action   : {robot_ns}/tile/place_press")
         self.get_logger().info(f"inspect service: {robot_ns}/tile/inspect")
         self.get_logger().info("kill service   : /kill")
@@ -288,6 +300,42 @@ class TaskManagerNode(Node):
             )
         return _cb
 
+    def _cowork_feedback_cb(self, goal_handle, tile_index: int, tile_type: int, total_tiles: int):
+        def _cb(feedback_msg):
+            fb = feedback_msg.feedback
+
+            current_step = int(getattr(fb, "current_step", 0))
+            stage = str(getattr(fb, "stage", "cowork"))
+            detail = str(getattr(fb, "detail", ""))
+
+            # cowork step를 1~11 기준으로 0~1 normalize
+            sub_progress = max(0.0, min(1.0, float(current_step) / 11.0))
+
+            overall_progress = self._calc_overall_progress(
+                tile_index=tile_index,
+                total_tiles=total_tiles,
+                tile_step=self.TILE_STEP_COWORK,
+                detail_progress=sub_progress,
+            )
+
+            self.current_tile_index = tile_index
+            self.current_tile_type = tile_type
+            self.current_detail_step = self.TILE_STEP_COWORK
+            self.current_detail_progress = sub_progress
+            self.current_state = f"cowork:{stage}:{detail}"
+
+            self._publish_execute_feedback(
+                goal_handle=goal_handle,
+                overall_step=self.OVERALL_TILE_WORK,
+                overall_progress=overall_progress,
+                tile_index=tile_index,
+                tile_type=tile_type,
+                detail_step=self.TILE_STEP_COWORK,
+                detail_progress=sub_progress,
+                state=f"cowork:{stage}",
+            )
+        return _cb
+    
     def _place_feedback_cb(self, goal_handle, tile_index: int, tile_type: int, total_tiles: int):
         def _cb(feedback_msg):
             fb = feedback_msg.feedback
@@ -505,6 +553,24 @@ class TaskManagerNode(Node):
 
         if goal_handle.is_cancel_requested:
             return False, "canceled_after_pick"
+        
+
+        #-----------------------------------------
+        if tile_step_start <= self.TILE_STEP_COWORK:
+            ok, msg = await self.call_cowork(
+                goal_handle=goal_handle,
+                tile_index=tile_index,
+                tile_type=tile_type,
+                wait_cement_done=True,
+            )
+            if not ok:
+                return False, f"cowork_failed:{msg}"
+
+        if self.kill_requested:
+            return False, "killed_after_cowork"
+
+        if goal_handle.is_cancel_requested:
+            return False, "canceled_after_cowork"
 
         # --------------------------
         # 2 PLACE
@@ -622,6 +688,70 @@ class TaskManagerNode(Node):
             return False, result.message
 
         return True, result.message
+    #-------------------
+    # cowork action
+    #-----------
+    async def call_cowork(self, goal_handle, tile_index, tile_type, wait_cement_done=True):
+        if self.kill_requested:
+            return False, "killed_before_cowork"
+
+        if not self.cowork_client.wait_for_server(timeout_sec=2.0):
+            return False, "cowork_action_server_unavailable"
+
+        goal = Cowork.Goal()
+        goal.tile_index = tile_index + 1
+        goal.tile_type = int(tile_type)
+        goal.wait_cement_done = bool(wait_cement_done)
+
+        send_future = self.cowork_client.send_goal_async(
+            goal,
+            feedback_callback=self._cowork_feedback_cb(
+                goal_handle=goal_handle,
+                tile_index=tile_index,
+                tile_type=tile_type,
+                total_tiles=self._current_total_tiles,
+            ),
+        )
+
+        sub_goal_handle = await send_future
+        self.active_sub_goal = sub_goal_handle
+
+        if not sub_goal_handle.accepted:
+            self.active_sub_goal = None
+            return False, "cowork_goal_rejected"
+
+        if self.kill_requested:
+            try:
+                await sub_goal_handle.cancel_goal_async()
+            except Exception:
+                pass
+            self.active_sub_goal = None
+            return False, "killed_during_cowork_start"
+
+        if goal_handle.is_cancel_requested:
+            try:
+                await sub_goal_handle.cancel_goal_async()
+            except Exception:
+                pass
+            self.active_sub_goal = None
+            return False, "canceled"
+
+        result_future = sub_goal_handle.get_result_async()
+        result_wrap = await result_future
+        self.active_sub_goal = None
+
+        if result_wrap.status == GoalStatus.STATUS_CANCELED:
+            if self.kill_requested:
+                return False, "cowork_canceled_by_kill"
+            return False, "cowork_canceled"
+
+        result = result_wrap.result
+        if not result.success:
+            return False, result.message
+
+        return True, result.message
+
+
 
     # --------------------------------------------------
     # place action

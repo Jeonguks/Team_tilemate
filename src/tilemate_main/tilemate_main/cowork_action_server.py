@@ -321,7 +321,6 @@ class CoworkActionServer(Node):
 
         self.publish_feedback(goal_handle, "ROTATE_AFTER_TOOL_PICK", "rotate -180 deg after retreat", start_step + 6)
         self.get_logger().info(f"[COWORK] step{start_step+4}: rotate -180 deg after retreat")
-        self.move_relative(0.0, 0.0, 0.0, dw=-180.0)
 
         return True, "tool_pick_success", start_step + 4
 
