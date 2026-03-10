@@ -166,7 +166,7 @@ def move_to_tile_place_position(placement_index: int):
 
     target = tool_pre_tilt.copy()
     target[0] += dx
-    target[1] -=20.0
+    target[1] -=30.0
     target[2] += dz
 
     print(f"[PLACE_TILE] Index={placement_index} 이동 좌표: {target}")
