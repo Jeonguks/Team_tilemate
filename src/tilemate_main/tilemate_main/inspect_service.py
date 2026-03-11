@@ -88,37 +88,23 @@ class InspectService(Node):
 
         del request
 
-        from DSR_ROBOT2 import get_current_posx, movel, posx, mwait, DR_BASE, posj, movej
+        from DSR_ROBOT2 import get_current_posx, movel, posx, mwait, DR_BASE, posj, movej,movesx
 
         try:
 
             self.get_logger().info("[INSPECT] start inspection")
 
-            # 2. pre_place 이동 (Joint, 특이점 회피)
-            pre_place = posj([-25.894,29.976,114.271,67.522,103.095,-54.547])
-            movej(pre_place, vel=30, acc=30)
-
-            # 카메라 관측 위치 이동
-            self.move_relative(0.0, -50.0, -70.0)
-
-            cur_pos, _ = get_current_posx(DR_BASE)
-            self.get_logger().info(f"[INSPECT] TCP before align: {cur_pos}")
-
-            # orientation 정렬
-            target_pos = [
-                cur_pos[0],
-                cur_pos[1],
-                cur_pos[2],
-                90.0,
-                90.0,
-                90.0,
+            candidates = [
+                posx([380.6733093261719, 177.2272491455078, 179.8480987548828, 89.89385223388672, 91.91939544677734, 92.74739837646484]),
+                posx([380.705, 157.182, 139.804, 90.000, 90.001, 89.999]),
+                posx([380.705, 127.182, 109.804, 90.000, 90.001, 89.999]),
             ]
-
-            movel(posx(target_pos), ref=DR_BASE, vel=20, acc=20)
+            
+            movesx(candidates, vel=80, acc=80)
             mwait()
 
-            cur_pos, _ = get_current_posx(DR_BASE)
-            self.get_logger().info(f"[INSPECT] TCP after align: {cur_pos}")
+            self.get_logger().info(f"{get_current_posx()}")
+
 
             # dummy anomaly score
             scores = [0.05, 0.12, 0.03]
