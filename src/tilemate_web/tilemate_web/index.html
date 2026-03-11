@@ -304,13 +304,24 @@
                         <div class="cement-stt-sub">안내가 끝나면 말씀해 주세요</div>
                     </div>
                     <div id="cement-stt-pick-calibrating" class="cement-stt-state" style="display:none;">
-                        <div class="cement-stt-label" style="color:#ef6c00;">🔊 배경 소음 측정 중...</div>
-                        <div class="cement-calib-bar-wrap"><div id="cement-calib-bar-pick" class="cement-calib-bar"></div></div>
+                        <div style="width:300px; border-radius:10px; overflow:hidden; background:#0a0a14; border:1px solid #ef6c0044;">
+                            <div style="display:flex; align-items:center; gap:6px; padding:6px 10px 3px;">
+                                <div style="width:7px; height:7px; border-radius:50%; background:#ef6c00; animation:blink-estop 1.2s step-start infinite;"></div>
+                                <span style="color:#ef6c00; font-size:0.72em; font-weight:bold; font-family:monospace; letter-spacing:1px;">대기 중... 소음 측정</span>
+                            </div>
+                            <canvas id="cement-fft-pick-calib" width="300" height="75" style="display:block;"></canvas>
+                        </div>
+                        <div class="cement-calib-bar-wrap" style="width:300px;"><div id="cement-calib-bar-pick" class="cement-calib-bar"></div></div>
                         <div class="cement-stt-sub">잠시 조용히 해주세요</div>
                     </div>
                     <div id="cement-stt-pick-listening" class="cement-stt-state" style="display:none;">
-                        <div style="font-size:2em; animation:cement-mic-blink 0.8s step-start infinite;">🔴</div>
-                        <div class="cement-stt-label" style="color:#c62828;">녹음 중... 말씀하세요</div>
+                        <div style="width:300px; border-radius:10px; overflow:hidden; background:#0a0a14; border:1px solid #c6282844;">
+                            <div style="display:flex; align-items:center; gap:6px; padding:6px 10px 3px;">
+                                <div style="width:7px; height:7px; border-radius:50%; background:#c62828; animation:cement-mic-blink 0.8s step-start infinite;"></div>
+                                <span style="color:#c62828; font-size:0.72em; font-weight:bold; font-family:monospace; letter-spacing:1px;">녹음 시작 — 말씀하세요</span>
+                            </div>
+                            <canvas id="cement-fft-pick-listen" width="300" height="75" style="display:block;"></canvas>
+                        </div>
                         <div class="cement-stt-sub">말이 끝나면 자동으로 멈춥니다</div>
                     </div>
                     <div id="cement-stt-pick-retry" class="cement-stt-state" style="display:none;">
@@ -338,13 +349,24 @@
                         <div class="cement-stt-sub">안내가 끝나면 말씀해 주세요</div>
                     </div>
                     <div id="cement-stt-cement-calibrating" class="cement-stt-state" style="display:none;">
-                        <div class="cement-stt-label" style="color:#ef6c00;">🔊 배경 소음 측정 중...</div>
-                        <div class="cement-calib-bar-wrap"><div id="cement-calib-bar-cement" class="cement-calib-bar"></div></div>
+                        <div style="width:300px; border-radius:10px; overflow:hidden; background:#0a0a14; border:1px solid #ef6c0044;">
+                            <div style="display:flex; align-items:center; gap:6px; padding:6px 10px 3px;">
+                                <div style="width:7px; height:7px; border-radius:50%; background:#ef6c00; animation:blink-estop 1.2s step-start infinite;"></div>
+                                <span style="color:#ef6c00; font-size:0.72em; font-weight:bold; font-family:monospace; letter-spacing:1px;">대기 중... 소음 측정</span>
+                            </div>
+                            <canvas id="cement-fft-cement-calib" width="300" height="75" style="display:block;"></canvas>
+                        </div>
+                        <div class="cement-calib-bar-wrap" style="width:300px;"><div id="cement-calib-bar-cement" class="cement-calib-bar"></div></div>
                         <div class="cement-stt-sub">잠시 조용히 해주세요</div>
                     </div>
                     <div id="cement-stt-cement-listening" class="cement-stt-state" style="display:none;">
-                        <div style="font-size:2em; animation:cement-mic-blink 0.8s step-start infinite;">🔴</div>
-                        <div class="cement-stt-label" style="color:#c62828;">녹음 중... 말씀하세요</div>
+                        <div style="width:300px; border-radius:10px; overflow:hidden; background:#0a0a14; border:1px solid #c6282844;">
+                            <div style="display:flex; align-items:center; gap:6px; padding:6px 10px 3px;">
+                                <div style="width:7px; height:7px; border-radius:50%; background:#c62828; animation:cement-mic-blink 0.8s step-start infinite;"></div>
+                                <span style="color:#c62828; font-size:0.72em; font-weight:bold; font-family:monospace; letter-spacing:1px;">녹음 시작 — 말씀하세요</span>
+                            </div>
+                            <canvas id="cement-fft-cement-listen" width="300" height="75" style="display:block;"></canvas>
+                        </div>
                         <div class="cement-stt-sub">말이 끝나면 자동으로 멈춥니다</div>
                     </div>
                     <div id="cement-stt-cement-retry" class="cement-stt-state" style="display:none;">
@@ -523,34 +545,32 @@
                     <div style="color:#888; font-size:0.95em;">녹음 대기 중</div>
                 </div>
                 <div id="voice-calibrating" style="display:none; flex-direction:column; align-items:center; gap:10px;">
-                    <div style="width:360px; border-radius:12px; overflow:hidden; background:#0a0a14; border:1px solid #ef6c0044; position:relative;">
-                        <!-- 상태 레이블 -->
-                        <div style="display:flex; align-items:center; gap:7px; padding:8px 12px 4px;">
-                            <div style="width:8px; height:8px; border-radius:50%; background:#ef6c00; animation:blink-estop 1.2s step-start infinite;"></div>
-                            <span style="color:#ef6c00; font-size:0.82em; font-weight:bold; font-family:monospace; letter-spacing:1px;">대기 중... 소음 측정</span>
+                    <div style="width:360px; border-radius:12px; overflow:hidden; background:#0a0a14; border:1px solid #ef6c0044;">
+                        <div style="display:flex; align-items:center; gap:7px; padding:8px 12px 3px;">
+                            <div style="width:7px; height:7px; border-radius:50%; background:#ef6c00; animation:blink-estop 1.2s step-start infinite;"></div>
+                            <span style="color:#ef6c00; font-size:0.78em; font-weight:bold; font-family:monospace; letter-spacing:1px;">대기 중... 소음 측정</span>
                         </div>
-                        <canvas id="fft-canvas-calib" width="360" height="110" style="display:block;"></canvas>
-                        <div style="display:flex; justify-content:space-between; padding:2px 10px 5px; background:#0a0a14;">
+                        <canvas id="fft-canvas-calib" width="360" height="100" style="display:block;"></canvas>
+                        <div style="display:flex; justify-content:space-between; padding:2px 10px 4px;">
                             <span style="color:#ef6c0055; font-size:0.62em; font-family:monospace;">0Hz</span>
                             <span style="color:#ef6c0055; font-size:0.62em; font-family:monospace;">2kHz</span>
                             <span style="color:#ef6c0055; font-size:0.62em; font-family:monospace;">4kHz</span>
                             <span style="color:#ef6c0055; font-size:0.62em; font-family:monospace;">8kHz</span>
                         </div>
                     </div>
-                    <div style="width:360px; height:5px; background:#1a1a1a; border-radius:3px; overflow:hidden;">
+                    <div style="width:360px; height:4px; background:#1a1a1a; border-radius:3px; overflow:hidden;">
                         <div id="calib-bar" style="height:100%; width:0%; background:linear-gradient(90deg,#ef6c00,#ffa726); border-radius:3px; transition:width 0.1s linear;"></div>
                     </div>
                     <div id="calib-countdown" style="font-size:0.82em; color:#aaa;">1초 후 녹음 시작</div>
                 </div>
                 <div id="voice-recording" style="display:none; flex-direction:column; align-items:center; gap:10px;">
-                    <div style="width:360px; border-radius:12px; overflow:hidden; background:#0a0a14; border:1px solid #c6282844; position:relative;">
-                        <!-- 상태 레이블 -->
-                        <div style="display:flex; align-items:center; gap:7px; padding:8px 12px 4px;">
-                            <div style="width:8px; height:8px; border-radius:50%; background:#c62828; animation:blink-estop 0.8s step-start infinite;"></div>
-                            <span style="color:#c62828; font-size:0.82em; font-weight:bold; font-family:monospace; letter-spacing:1px;">녹음 시작 — 말씀하세요</span>
+                    <div style="width:360px; border-radius:12px; overflow:hidden; background:#0a0a14; border:1px solid #c6282844;">
+                        <div style="display:flex; align-items:center; gap:7px; padding:8px 12px 3px;">
+                            <div style="width:7px; height:7px; border-radius:50%; background:#c62828; animation:blink-estop 0.8s step-start infinite;"></div>
+                            <span style="color:#c62828; font-size:0.78em; font-weight:bold; font-family:monospace; letter-spacing:1px;">녹음 시작 — 말씀하세요</span>
                         </div>
-                        <canvas id="fft-canvas" width="360" height="110" style="display:block;"></canvas>
-                        <div style="display:flex; justify-content:space-between; padding:2px 10px 5px; background:#0a0a14;">
+                        <canvas id="fft-canvas" width="360" height="100" style="display:block;"></canvas>
+                        <div style="display:flex; justify-content:space-between; padding:2px 10px 4px;">
                             <span style="color:#1a237e88; font-size:0.62em; font-family:monospace;">0Hz</span>
                             <span style="color:#1a237e88; font-size:0.62em; font-family:monospace;">2kHz</span>
                             <span style="color:#1a237e88; font-size:0.62em; font-family:monospace;">4kHz</span>
@@ -1205,6 +1225,29 @@
         document.getElementById('card-'+n).classList.add('selected');
     }
 
+    function speakTTS(text) {
+        // firebase_bridge.py 시작 시 gTTS로 생성한 mp3(tts_start_b64)를 재생
+        // → "타일을 잡아주세요"와 완전히 동일한 gTTS 목소리
+        database.ref('robot_status/tts_start_b64').once('value', (snap) => {
+            const b64 = snap.val();
+            if (b64) {
+                const audio = new Audio('data:audio/mp3;base64,' + b64);
+                audio.play().catch(() => _speakFallback(text));
+            } else {
+                _speakFallback(text);
+            }
+        });
+    }
+
+    // Firebase에 오디오가 없을 때 Web Speech API 폴백
+    function _speakFallback(text) {
+        if (!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'ko-KR';
+        window.speechSynthesis.speak(utter);
+    }
+
     function confirmDesign() {
         if (!selectedDesign) { alert('패턴을 선택해주세요!'); return; }
         if (selectedDesign === 3) {
@@ -1214,6 +1257,7 @@
         closePopup();
         database.ref('robot_command').set({ action: 'start', design: selectedDesign, is_resume: false, timestamp: Date.now() });
         isStarted = true; showPatternPreview(selectedDesign);
+        speakTTS('작업을 시작합니다');
         if (!timerInterval) startTimer();
     }
 
@@ -1267,6 +1311,7 @@
         database.ref('robot_command').set({ action: 'start', design: 3, custom_pattern: patternStr, is_resume: false, timestamp: Date.now() });
         DESIGN_COLORS[3] = customValues.map(v => v === 'B' ? 'B' : 'W');
         isStarted = true; showCustomPatternPreview(customValues);
+        speakTTS('작업을 시작합니다');
         if (!timerInterval) startTimer();
     }
 
@@ -1604,7 +1649,7 @@
     function closeVoicePopup() {
         document.getElementById('voice-popup').classList.remove('show');
         clearVoiceTimers();
-        stopFFTVisualizer();
+        stopVoiceFFT();
     }
 
     function switchToManualPopup() {
@@ -1629,109 +1674,123 @@
         if (voicePollingTimer)   { clearInterval(voicePollingTimer);   voicePollingTimer = null; }
     }
 
-    /* ── FFT 음성 시각화 ── */
-    let _fftAudioCtx = null, _fftAnalyser = null, _fftStream = null, _fftAnimId = null, _fftDataArr = null;
-    let _fftMode = 'calibrating';
-
-    async function startFFTVisualizer(mode) {
-        _fftMode = mode || 'calibrating';
-        if (_fftStream) return;
-        try {
-            _fftStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            _fftAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const source = _fftAudioCtx.createMediaStreamSource(_fftStream);
-            _fftAnalyser = _fftAudioCtx.createAnalyser();
-            _fftAnalyser.fftSize = 2048;
-            _fftAnalyser.smoothingTimeConstant = 0.8;
-            source.connect(_fftAnalyser);
-            _fftDataArr = new Uint8Array(_fftAnalyser.frequencyBinCount);
-            drawFFT();
-        } catch(e) { console.warn('[FFT] 마이크 접근 실패:', e); }
-    }
-
-    function switchFFTMode(mode) { _fftMode = mode; }
-
-    function stopFFTVisualizer() {
-        if (_fftAnimId)   { cancelAnimationFrame(_fftAnimId); _fftAnimId = null; }
-        if (_fftStream)   { _fftStream.getTracks().forEach(t => t.stop()); _fftStream = null; }
-        if (_fftAudioCtx) { _fftAudioCtx.close(); _fftAudioCtx = null; }
-        _fftAnalyser = null;
-        ['fft-canvas', 'fft-canvas-calib'].forEach(id => {
-            const c = document.getElementById(id);
-            if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
-        });
-    }
-
-    function drawFFT() {
-        _fftAnimId = requestAnimationFrame(drawFFT);
-        if (!_fftAnalyser) return;
-        const isCalib = _fftMode === 'calibrating';
-        const canvas = document.getElementById(isCalib ? 'fft-canvas-calib' : 'fft-canvas');
-        if (!canvas) return;
-        // 반대쪽 캔버스 비우기
-        const other = document.getElementById(isCalib ? 'fft-canvas' : 'fft-canvas-calib');
-        if (other) other.getContext('2d').clearRect(0, 0, other.width, other.height);
-
-        const ctx = canvas.getContext('2d');
-        const W = canvas.width, H = canvas.height;
-        _fftAnalyser.getByteFrequencyData(_fftDataArr);
-
+    /* ════════════════════════════════════════
+       공통 FFT 드로어
+       ════════════════════════════════════════ */
+    function _fftDraw(ctx, W, H, dataArr, bufLen, sampleRate, isCalib) {
         ctx.fillStyle = '#0a0a14';
         ctx.fillRect(0, 0, W, H);
-
-        // 그리드
-        ctx.strokeStyle = isCalib ? '#ef6c0022' : '#1a237e33';
+        ctx.strokeStyle = isCalib ? '#ef6c0022' : '#c6282822';
         ctx.lineWidth = 1;
-        for (let i = 1; i < 4; i++) {
-            ctx.beginPath(); ctx.moveTo(0, H * i / 4); ctx.lineTo(W, H * i / 4); ctx.stroke();
-        }
+        for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(0, H*i/4); ctx.lineTo(W, H*i/4); ctx.stroke(); }
 
-        const sampleRate = _fftAudioCtx.sampleRate;
-        const bufLen = _fftAnalyser.frequencyBinCount;
-        const displayBins = Math.min(Math.floor(8000 / (sampleRate / 2) * bufLen), bufLen);
+        const displayBins = Math.min(Math.floor(8000 / (sampleRate/2) * bufLen), bufLen);
         const barW = W / displayBins;
-
-        // 피크 탐색
-        const vLow = Math.floor(80 / (sampleRate / 2) * bufLen);
-        const vHigh = Math.floor(3400 / (sampleRate / 2) * bufLen);
+        const vLow  = Math.floor(80   / (sampleRate/2) * bufLen);
+        const vHigh = Math.floor(3400 / (sampleRate/2) * bufLen);
         let peakIdx = vLow, peakVal = 0;
-        for (let i = vLow; i < vHigh; i++) {
-            if (_fftDataArr[i] > peakVal) { peakVal = _fftDataArr[i]; peakIdx = i; }
-        }
+        for (let i = vLow; i < vHigh; i++) { if (dataArr[i] > peakVal) { peakVal = dataArr[i]; peakIdx = i; } }
 
         for (let i = 0; i < displayBins; i++) {
-            const v = _fftDataArr[i] / 255;
+            const v = dataArr[i] / 255;
             const barH = v * H;
             const ratio = i / displayBins;
             let r, g, b;
             if (isCalib) {
-                // 오렌지 계열
-                r = Math.round(180 + ratio * 50);
-                g = Math.round(80  + ratio * 80);
-                b = 20;
+                r = Math.round(180 + ratio*50); g = Math.round(80 + ratio*80); b = 20;
             } else {
-                // 파랑→시안→라임→핑크
-                if (ratio < 0.3)       { r = Math.round(20 + ratio/0.3*30); g = Math.round(100 + ratio/0.3*155); b = 230; }
-                else if (ratio < 0.65) { const t=(ratio-0.3)/0.35; r=Math.round(50+t*180); g=Math.round(255-t*50); b=Math.round(255-t*200); }
+                if      (ratio < 0.3)  { r=Math.round(20+ratio/0.3*30);        g=Math.round(100+ratio/0.3*155); b=230; }
+                else if (ratio < 0.65) { const t=(ratio-0.3)/0.35; r=Math.round(50+t*180);  g=Math.round(255-t*50);  b=Math.round(255-t*200); }
                 else                   { const t=(ratio-0.65)/0.35; r=Math.round(230+t*25); g=Math.round(205-t*180); b=Math.round(55+t*150); }
             }
             const isPeak = peakVal > 60 && Math.abs(i - peakIdx) <= 5;
-            ctx.fillStyle = `rgba(${r},${g},${b},${isPeak ? 1.0 : (0.5 + v * 0.5)})`;
-            ctx.fillRect(i * barW, H - barH, Math.max(barW - 0.5, 0.5), barH);
-            if (barH > 2) {
-                ctx.fillStyle = `rgba(255,255,255,${v * 0.5})`;
-                ctx.fillRect(i * barW, H - barH, Math.max(barW - 0.5, 0.5), 1.5);
-            }
+            ctx.fillStyle = `rgba(${r},${g},${b},${isPeak ? 1.0 : 0.5 + v*0.5})`;
+            ctx.fillRect(i*barW, H-barH, Math.max(barW-0.5,0.5), barH);
+            if (barH > 2) { ctx.fillStyle = `rgba(255,255,255,${v*0.5})`; ctx.fillRect(i*barW, H-barH, Math.max(barW-0.5,0.5), 1.5); }
         }
-        // 피크 수직선
         if (peakVal > 60) {
-            const px = (peakIdx / displayBins) * W;
-            const grad = ctx.createLinearGradient(px, 0, px, H);
-            grad.addColorStop(0, 'rgba(255,255,255,0.7)');
-            grad.addColorStop(1, 'rgba(255,255,255,0)');
-            ctx.strokeStyle = grad; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke();
+            const px = (peakIdx/displayBins)*W;
+            const g = ctx.createLinearGradient(px,0,px,H);
+            g.addColorStop(0,'rgba(255,255,255,0.7)'); g.addColorStop(1,'rgba(255,255,255,0)');
+            ctx.strokeStyle=g; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,H); ctx.stroke();
         }
+    }
+
+    /* ── voice-popup FFT ── */
+    let _vFft = { ctx:null, analyser:null, stream:null, animId:null, data:null, mode:'calib' };
+
+    async function startVoiceFFT(mode) {
+        _vFft.mode = mode;
+        if (_vFft.stream) return; // 스트림 재사용, 모드만 전환
+        try {
+            _vFft.stream = await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
+            _vFft.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const src = _vFft.ctx.createMediaStreamSource(_vFft.stream);
+            _vFft.analyser = _vFft.ctx.createAnalyser();
+            _vFft.analyser.fftSize = 2048; _vFft.analyser.smoothingTimeConstant = 0.8;
+            src.connect(_vFft.analyser);
+            _vFft.data = new Uint8Array(_vFft.analyser.frequencyBinCount);
+            _drawVoiceFFT();
+        } catch(e) { console.warn('[VoiceFFT] 마이크 접근 실패:', e); }
+    }
+    function switchVoiceFFTMode(mode) { _vFft.mode = mode; }
+    function stopVoiceFFT() {
+        if (_vFft.animId)   { cancelAnimationFrame(_vFft.animId); _vFft.animId = null; }
+        if (_vFft.stream)   { _vFft.stream.getTracks().forEach(t=>t.stop()); _vFft.stream = null; }
+        if (_vFft.ctx)      { _vFft.ctx.close(); _vFft.ctx = null; }
+        _vFft.analyser = null;
+        ['fft-canvas-calib','fft-canvas'].forEach(id => { const c=document.getElementById(id); if(c) c.getContext('2d').clearRect(0,0,c.width,c.height); });
+    }
+    function _drawVoiceFFT() {
+        _vFft.animId = requestAnimationFrame(_drawVoiceFFT);
+        if (!_vFft.analyser) return;
+        const isCalib = _vFft.mode === 'calib';
+        const canvas = document.getElementById(isCalib ? 'fft-canvas-calib' : 'fft-canvas');
+        const other  = document.getElementById(isCalib ? 'fft-canvas' : 'fft-canvas-calib');
+        if (!canvas) return;
+        if (other) other.getContext('2d').clearRect(0,0,other.width,other.height);
+        _vFft.analyser.getByteFrequencyData(_vFft.data);
+        _fftDraw(canvas.getContext('2d'), canvas.width, canvas.height, _vFft.data, _vFft.analyser.frequencyBinCount, _vFft.ctx.sampleRate, isCalib);
+    }
+
+    /* ── cement-modal FFT ── */
+    let _cFft = { ctx:null, analyser:null, stream:null, animId:null, data:null, canvasId:null };
+
+    async function startCementFFT(canvasId) {
+        _cFft.canvasId = canvasId;
+        if (_cFft.stream) return; // 스트림 재사용
+        try {
+            _cFft.stream = await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
+            _cFft.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const src = _cFft.ctx.createMediaStreamSource(_cFft.stream);
+            _cFft.analyser = _cFft.ctx.createAnalyser();
+            _cFft.analyser.fftSize = 2048; _cFft.analyser.smoothingTimeConstant = 0.8;
+            src.connect(_cFft.analyser);
+            _cFft.data = new Uint8Array(_cFft.analyser.frequencyBinCount);
+            _drawCementFFT();
+        } catch(e) { console.warn('[CementFFT] 마이크 접근 실패:', e); }
+    }
+    function switchCementFFTCanvas(canvasId) { _cFft.canvasId = canvasId; }
+    function stopCementFFT() {
+        if (_cFft.animId)   { cancelAnimationFrame(_cFft.animId); _cFft.animId = null; }
+        if (_cFft.stream)   { _cFft.stream.getTracks().forEach(t=>t.stop()); _cFft.stream = null; }
+        if (_cFft.ctx)      { _cFft.ctx.close(); _cFft.ctx = null; }
+        _cFft.analyser = null; _cFft.canvasId = null;
+        ['cement-fft-pick-calib','cement-fft-pick-listen','cement-fft-cement-calib','cement-fft-cement-listen'].forEach(id => {
+            const c=document.getElementById(id); if(c) c.getContext('2d').clearRect(0,0,c.width,c.height);
+        });
+    }
+    function _drawCementFFT() {
+        _cFft.animId = requestAnimationFrame(_drawCementFFT);
+        if (!_cFft.analyser || !_cFft.canvasId) return;
+        const canvas = document.getElementById(_cFft.canvasId);
+        if (!canvas) return;
+        ['cement-fft-pick-calib','cement-fft-pick-listen','cement-fft-cement-calib','cement-fft-cement-listen'].forEach(id => {
+            if (id !== _cFft.canvasId) { const c=document.getElementById(id); if(c) c.getContext('2d').clearRect(0,0,c.width,c.height); }
+        });
+        _cFft.analyser.getByteFrequencyData(_cFft.data);
+        const isCalib = _cFft.canvasId.includes('calib');
+        _fftDraw(canvas.getContext('2d'), canvas.width, canvas.height, _cFft.data, _cFft.analyser.frequencyBinCount, _cFft.ctx.sampleRate, isCalib);
     }
 
     function showVoiceState(state) {
@@ -1739,9 +1798,9 @@
             .forEach(id => { document.getElementById(id).style.display = 'none'; });
         const el = document.getElementById('voice-' + state);
         if (el) el.style.display = 'flex';
-        if      (state === 'calibrating') startFFTVisualizer('calibrating');
-        else if (state === 'recording')   switchFFTMode('recording');
-        else                              stopFFTVisualizer();
+        if      (state === 'calibrating') startVoiceFFT('calib');
+        else if (state === 'recording')   switchVoiceFFTMode('record');
+        else                              stopVoiceFFT();
     }
 
     function startVoiceRecording() {
@@ -1879,6 +1938,7 @@
         // 패턴 미리보기 표시 (showCustomPatternPreview: B=검정, 나머지=흰색)
         const voiceValues = voiceLayout.map(v => v === 2 ? 'B' : 'A');
         showCustomPatternPreview(voiceValues);
+        speakTTS('작업을 시작합니다');
 
         if (!timerInterval) startTimer();
     }
@@ -1907,6 +1967,10 @@
             stopCementCalibAnim();
         }
         _lastSttMicState = micState;
+
+        if      (micState === 'calibrating') startCementFFT(`cement-fft-${phase}-calib`);
+        else if (micState === 'listening')   switchCementFFTCanvas(`cement-fft-${phase}-listen`);
+        else                                 stopCementFFT();
 
         if      (micState === 'tts_speaking') show('tts_speaking');
         else if (micState === 'calibrating')  show('calibrating');

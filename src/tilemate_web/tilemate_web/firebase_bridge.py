@@ -112,9 +112,6 @@ class FirebaseBridgeNode(Node):
             "design_ab": "",
             "token": "",
             "is_resume": False,
-            "pos_x": 0.0,
-            "pos_y": 0.0,
-            "pos_z": 0.0,
             "joint_speed": 0.0,
             "tile_level": 0.0,
             "inspect_no": 0,
@@ -125,6 +122,9 @@ class FirebaseBridgeNode(Node):
             "ext_torque": {"0": 0.0, "1": 0.0, "2": 0.0, "3": 0.0, "4": 0.0, "5": 0.0},
             "message": "",
         })
+
+        # "작업을 시작합니다" mp3를 미리 생성해 Firebase에 저장 (웹에서 동일 목소리 재생용)
+        self._upload_tts_preset("작업을 시작합니다", "tts_start_b64")
 
         # --------------------------------------------------
         # publisher (기존 하위 정지/리셋 체계 호환용)
@@ -267,10 +267,8 @@ class FirebaseBridgeNode(Node):
         design = int(cmd_dict.get("design", 0))
 
         if design == 1:
-            # zigzag: 흰색 시작 체크무늬 B=흰색, A=검정
             return "B,A,B,A,B,A,B,A,B", design
         elif design == 2:
-            # straight: B=흰색줄, A=검정줄
             return "B,B,B,A,A,A,B,B,B", design
         elif design == 3:
             custom_pattern = str(cmd_dict.get("custom_pattern", "")).strip()
@@ -613,10 +611,33 @@ class FirebaseBridgeNode(Node):
     # ==================================================
     # TTS 헬퍼
     # ==================================================
+    def _upload_tts_preset(self, text: str, firebase_key: str):
+        """
+        gTTS로 mp3 생성 후 base64로 Firebase에 저장.
+        웹에서 동일한 목소리로 재생하기 위한 사전 업로드.
+        """
+        if not _TTS_AVAILABLE:
+            return
+        try:
+            import base64
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                tmp_path = f.name
+            tts = gTTS(text=text, lang="ko")
+            tts.save(tmp_path)
+            with open(tmp_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            os.remove(tmp_path)
+            self.ref.update({firebase_key: b64})
+            self.get_logger().info(f"[TTS] preset 업로드 완료: '{text}' → {firebase_key}")
+        except Exception as e:
+            self.get_logger().warn(f"[TTS] preset 업로드 실패: {e}")
+
+    # ==================================================
     def _speak(self, text: str):
         """
         텍스트를 한국어 TTS로 재생합니다.
         gTTS로 mp3 생성 후 pygame으로 재생.
+        동시에 mp3를 base64로 인코딩해 Firebase에 저장 → 웹에서 동일한 목소리 재생 가능.
         """
         if not _TTS_AVAILABLE:
             self.get_logger().warn(f"[TTS] 비활성화 상태. 출력 생략: '{text}'")
@@ -626,6 +647,15 @@ class FirebaseBridgeNode(Node):
                 tmp_path = f.name
             tts = gTTS(text=text, lang="ko")
             tts.save(tmp_path)
+
+            # mp3 → base64 → Firebase (웹 동일 목소리 재생용)
+            try:
+                import base64
+                with open(tmp_path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                self.ref.update({"tts_audio_b64": b64, "tts_audio_text": text})
+            except Exception as e:
+                self.get_logger().warn(f"[TTS] Firebase 업로드 실패: {e}")
 
             pygame.mixer.music.load(tmp_path)
             pygame.mixer.music.play()
@@ -875,9 +905,6 @@ class FirebaseBridgeNode(Node):
                             "design_ab": "",
                             "token": "",
                             "is_resume": False,
-                            "pos_x": 0.0,
-                            "pos_y": 0.0,
-                            "pos_z": 0.0,
                             "joint_speed": 0.0,
                             "tile_level": 0.0,
                             "inspect_no": 0,
