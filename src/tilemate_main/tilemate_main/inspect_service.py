@@ -97,7 +97,6 @@ class InspectService(Node):
             # 2. pre_place 이동 (Joint, 특이점 회피)
             pre_place = posj([-25.894,29.976,114.271,67.522,103.095,-54.547])
             movej(pre_place, vel=30, acc=30)
-            mwait()
 
             # 카메라 관측 위치 이동
             self.move_relative(0.0, -50.0, -70.0)
@@ -115,7 +114,7 @@ class InspectService(Node):
                 90.0,
             ]
 
-            movel(posx(target_pos), ref=DR_BASE, vel=40, acc=40)
+            movel(posx(target_pos), ref=DR_BASE, vel=20, acc=20)
             mwait()
 
             cur_pos, _ = get_current_posx(DR_BASE)

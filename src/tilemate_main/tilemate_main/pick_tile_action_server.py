@@ -302,15 +302,6 @@ class PickTileActionServer(Node):
         self.publish_feedback(goal_handle, 9, 1.0, "done", pick_above[:3])
         self.get_logger().info("[PICK_TILE] finished")
 
-
-        # 1) Home
-        j_ready = posj([0, 0, 90, 0, 90, 0])
-        self.publish_feedback(goal_handle, 1, 0.05, "move_home")
-        self.get_logger().info("[PICK_TILE] step1: move home")
-        movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
-        mwait()
-
-
         return True, "pick_success"
 
 

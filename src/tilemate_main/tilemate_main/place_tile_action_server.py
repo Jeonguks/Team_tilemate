@@ -366,6 +366,7 @@ class PlaceTileActionServer(Node):
             DR_BASE,
             movel,
             posx,
+            DR_MV_MOD_REL,
         )
 
         def move_relative(dx: float, dy: float, dz: float, dw: float = 0.0, dp: float = 0.0, dr: float = 0.0):
@@ -445,8 +446,6 @@ class PlaceTileActionServer(Node):
         if self.check_abort(goal_handle):
             return (False, press_depth, "canceled")
 
-        move_relative(0.0, 0.0, 0.0, dw=180.0)
-
         # 2) pre_place 이동
         self.publish_feedback(goal_handle, "approach_pre_place", None, 0.0, 0.15)
         dx, dz = move_to_tile_place_position(self.placement_index)
@@ -487,28 +486,30 @@ class PlaceTileActionServer(Node):
 
         # 중간 홈 복귀
         movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
-        mwait()
 
         if self.check_abort(goal_handle):
             return (False, press_depth, "canceled")
 
         # 8) 툴 반납 위치 이동
-        tool_pre_release = [233.122, -350.591, 143.064]
-        tool_release = [233.122, -350.591, 123.0]
+        tool_pre_release = posx([239.723, -354.567+10.0, 201.217, 122.919, -179.643, -57.826+180.0])
+        tool_release = posx([239.723, -354.567+10.0, 120.736, 122.919, -179.643, -57.826+180.0])
 
-        move_absoulte(tool_pre_release[0], tool_pre_release[1], tool_pre_release[2])
-        move_absoulte(tool_release[0], tool_release[1], tool_release[2])
+        movel(tool_pre_release, vel=30, acc=30)
+        mwait()
+        movel(tool_release, vel=30, acc=30)
+        mwait()
+        movel(posx([0,-10.0,0,0,0,0]), vel=30, acc=30)
+        mwait()
 
         self.gripper.open_gripper()
         
         # 8) 툴 반납후 상단 이동
-        move_relative(0.0, 0.0, 30.0)
+        move_relative(0.0, 0.0, 40.0)
 
 
         # 9) 홈 복귀
         self.publish_feedback(goal_handle, "return_home", None, press_depth, 0.98)
         movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
-        mwait()
 
         self.publish_feedback(goal_handle, "done", None, press_depth, 1.0)
 

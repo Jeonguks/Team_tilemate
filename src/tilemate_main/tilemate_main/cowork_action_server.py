@@ -266,7 +266,7 @@ class CoworkActionServer(Node):
     # --------------------------------------------------
 
     def pick_tool_sequence(self, goal_handle, start_step: int):
-        from DSR_ROBOT2 import posx, movel, mwait, wait, DR_BASE, posj, movej
+        from DSR_ROBOT2 import posx, movel, mwait, wait, DR_BASE, posj, movej, movesx,DR_MV_MOD_REL
 
         # 기존 단독 스크립트 값 이식
         tool_pre_grip = [238.763, -373.264, 201.064]
@@ -280,28 +280,28 @@ class CoworkActionServer(Node):
         self.publish_feedback(goal_handle, "MOVE_TOOL_PRE_GRIP", "move to tool pre-grip", start_step)
         self.get_logger().info(f"[COWORK] step{start_step}: move to tool_pre_grip={tool_pre_grip}")
         
-        self.move_relative(0.0, 30.0, 100.0)
         
-
-
-        j_ready = posj([0, 0, 90, 0, 90, 0])
-        
-        self.get_logger().info(" move home")
-        movej(j_ready, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
+        condidates = [
+            posx([488.423, -163.604, 201.213, 34.747, -180.0, -101.326]),
+            posx([235.125, -344.275, 201.217, 68.472, -178.415, -112.306]),
+            posx([239.723, -354.567, 201.217, 122.919, -179.643, -57.826])
+        ]
+        movesx(condidates, time=7.5)
+        movel(posx([239.723, -354.567, 201.217, 122.919, -179.643, -57.826+180]), vel=40, acc=30)
         mwait()
 
-        # step start_step+3: 툴 파지 위치 이동
-        if self.check_cancel(goal_handle, start_step + 1):
-            return False, "canceled", start_step + 1
 
+        # step start_step+3: 툴 파지 위치 이동
         self.publish_feedback(goal_handle, "MOVE_TOOL_GRIP", "move to tool grip pose", start_step + 1)
         self.get_logger().info(f"[COWORK] step{start_step+1}: move to tool_grip={tool_grip}")
-        self.move_absolute_xyz_keep_rpy(tool_grip)
+        if self.check_cancel(goal_handle, start_step + 1):
+            return False, "canceled", start_step + 1
+        movel(posx([239.723, -354.567, 120.736, 122.919, -179.643, -57.826+180.0]), vel=40, acc=30)
+        mwait()
 
         # step start_step+4: 툴 파지
         if self.check_cancel(goal_handle, start_step + 2):
             return False, "canceled", start_step + 2
-
         self.publish_feedback(goal_handle, "GRIP_TOOL", "close gripper for tool pick", start_step + 2)
         self.get_logger().info(f"[COWORK] step{start_step+2}: close gripper")
         self.gripper.close_gripper()
@@ -312,8 +312,9 @@ class CoworkActionServer(Node):
             return False, "canceled", start_step + 3
 
         self.publish_feedback(goal_handle, "RETREAT_WITH_TOOL", "retreat after tool grip", start_step + 5)
-        self.get_logger().info(f"[COWORK] step{start_step+3}: retreat to {retreat_x}")
-        self.move_absolute_xyz_keep_rpy([retreat_x[0], retreat_x[1], retreat_x[2] + 10.0])
+        self.get_logger().info(f"[COWORK] step{start_step+3}:")
+
+        movel(posx([0, 10.0, 40.0, 0, 0, 0]), vel=40, acc= 30, mod=DR_MV_MOD_REL)
 
         # step start_step+6:  회전
         if self.check_cancel(goal_handle, start_step + 4):
@@ -348,7 +349,7 @@ class CoworkActionServer(Node):
 
         self.publish_feedback(goal_handle, "MOVE_TO_GIVE", "move to give pose", 1)
         self.get_logger().info(f"[COWORK] step1: move to give_pose={give_pose}")
-        movel(posx(give_pose), ref=DR_BASE, vel=self.robot_cfg.vel, acc=self.robot_cfg.acc)
+        movel(posx(give_pose), ref=DR_BASE, vel=100, acc=100)
         mwait()
 
         # step 2) 사람이 가져갈 때까지 대기
