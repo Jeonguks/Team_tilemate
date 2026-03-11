@@ -610,7 +610,6 @@ class TaskManagerNode(Node):
             tile_index=tile_index,
             tile_type=tile_type,
             total_tiles=total_tiles,
-            tile_step_start=tile_step_start,
         )
 
         for step_def in self.tile_steps:
