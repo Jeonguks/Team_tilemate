@@ -390,19 +390,13 @@
     <div class="process-flow">
         <div id="step1" class="step">타일 파지</div>
         <div class="step">→</div>
-        <div id="step2" class="step">타일 툴에 두기</div>
+        <div id="step2" class="step">시멘트 도포</div>
         <div class="step">→</div>
-        <div id="step3" class="step">시멘트 도포</div>
+        <div id="step3" class="step">타일 부착</div>
         <div class="step">→</div>
-        <div id="step4" class="step">타일 툴 들기</div>
+        <div id="step4" class="step">단차 검수</div>
         <div class="step">→</div>
-        <div id="step5" class="step">타일 부착</div>
-        <div class="step">→</div>
-        <div id="step6" class="step">타일 툴 반환</div>
-        <div class="step">→</div>
-        <div id="step7" class="step">단차 검수</div>
-        <div class="step">→</div>
-        <div id="step8" class="step">압착 보정</div>
+        <div id="step5" class="step">압착 보정</div>
     </div>
 
     <div class="bottom-section" id="bottom-section" style="position: relative;">
@@ -995,7 +989,7 @@
 
         // ── 2. 핵심 Enum 상태 변수 ──
         const overallStep = data.current_step || 0; // 0: READY, 1: WORK, 2: FINISH
-        const tileStep    = data.tile_step || 0;    // 0: IDLE, 1: PICK, 2: PLACE, 3: INSPECT, 4: COMPACT, 5: DONE
+        const tileStep    = data.tile_step || 0;    // 0: IDLE, 1: PICK, 2: COWORK, 3: PLACE, 4: INSPECT, 5: COMPACT, 6: DONE
         if (data.design) currentDesign = parseInt(data.design);
         const currentJobs = data.completed_jobs || 0;
         const workingTileId = (data.working_tile !== undefined) ? parseInt(data.working_tile) + 1 : currentJobs + 1;
@@ -1009,10 +1003,11 @@
         // (8개의 HTML 노드가 있으므로, Enum 상태값에 따라 적절한 UI 박스를 활성화)
         let activeUiStep = 0;
         if (overallStep === 1) {
-            if (tileStep === 1) activeUiStep = 1;      // 파지
-            else if (tileStep === 2) activeUiStep = 5; // 부착
-            else if (tileStep === 3) activeUiStep = 7; // 검수 (UI: 단차 검수)
-            else if (tileStep === 4) activeUiStep = 8; // 압착 (UI: 압착 보정)
+            if (tileStep === 1) activeUiStep = 1;      // PICK    → 타일 파지
+            else if (tileStep === 2) activeUiStep = 2; // COWORK  → 시멘트 도포
+            else if (tileStep === 3) activeUiStep = 3; // PLACE   → 타일 부착
+            else if (tileStep === 4) activeUiStep = 4; // INSPECT → 단차 검수
+            else if (tileStep === 5) activeUiStep = 5; // COMPACT → 압착 보정
         } else if (overallStep === 2) {
             activeUiStep = 0;
         }
@@ -1032,11 +1027,13 @@
                 // 3D 뷰 색상 업데이트
                 tiles3D[workingTileId - 1].material.color.setHex(tColor !== null ? tColor : 0xffffff);
 
-                // 1) 파지(PICK) & 부착(PLACE) 단계: 파이차트 활성화
-                if (tileStep === 1 || tileStep === 2) {
+                // 1) 파지(PICK) & COWORK(툴에 두기/시멘트) & 부착(PLACE) 단계: 파이차트 활성화
+                if (tileStep === 1 || tileStep === 2 || tileStep === 3) {
                     tileEl.classList.add('working');
                     tileEl.style.color = isBlack ? '#ffffff' : '#333333';
-                    tileEl.innerText = (tileStep === 1) ? '파지 중' : '부착 중';
+                    if (tileStep === 1)      tileEl.innerText = '파지 중';
+                    else if (tileStep === 2) tileEl.innerText = '시멘트';
+                    else                    tileEl.innerText = '부착 중';
                     tileState[workingTileId] = 'working';
                     
                     const tileProgress = data.tile_progress || 0.0;
@@ -1045,7 +1042,7 @@
                     tileEl.style.backgroundImage = `conic-gradient(${overlayColor} ${deg}deg, transparent 0deg)`;
                 } 
                 // 2) 단차 검수(INSPECT) 단계
-                else if (tileStep === 3) {
+                else if (tileStep === 4) {
                     tileEl.classList.remove('working');
                     tileEl.style.backgroundImage = ''; // 파이차트 지우기
                     
@@ -1065,7 +1062,7 @@
                     tileState[workingTileId] = 'checking';
                 }
                 // 3) 압착 보정(COMPACT) 단계
-                else if (tileStep === 4) {
+                else if (tileStep === 5) {
                     tileEl.classList.remove('working');
                     tileEl.style.backgroundImage = '';
                     tileEl.style.color = isBlack ? '#aaffaa' : '#2e7d32';
@@ -1101,11 +1098,11 @@
     });
 
     function updateProcessStep(stepNumber) {
-        for (let i = 1; i <= 8; i++) {
+        for (let i = 1; i <= 5; i++) {
             const el = document.getElementById('step' + i);
             if (el) el.classList.remove('active');
         }
-        if (stepNumber > 0 && stepNumber <= 8) {
+        if (stepNumber > 0 && stepNumber <= 5) {
             const el = document.getElementById('step' + stepNumber);
             if (el) el.classList.add('active');
         }

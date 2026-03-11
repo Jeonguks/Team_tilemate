@@ -167,6 +167,7 @@ class FirebaseBridgeNode(Node):
         self._active_token = ""
         self._last_completed_jobs_fb = 0
         self._last_tile_step_fb = 0
+        self._last_cowork_stage = ""
 
         # --------------------------------------------------
         # 서비스 클라이언트
@@ -391,6 +392,20 @@ class FirebaseBridgeNode(Node):
         tile_step = int(fb.detail_step) 
         overall_step = int(fb.overall_step)
 
+        # ── 피드백 전체 터미널 출력 ──
+        print(
+            f"\n[FB] ─────────────────────────────────────\n"
+            f"  overall_step   : {overall_step}\n"
+            f"  tile_step      : {tile_step}  (prev={self._last_tile_step_fb})\n"
+            f"  tile_index     : {tile_index}\n"
+            f"  tile_type      : {tile_type}\n"
+            f"  overall_prog   : {float(fb.overall_progress):.3f}\n"
+            f"  detail_prog    : {float(fb.detail_progress):.3f}\n"
+            f"  state          : {fb.state}\n"
+            f"─────────────────────────────────────────",
+            flush=True,
+        )
+
         # 완료 개수 추정
         # TaskManager에서는 tile_step == TILE_STEP_DONE(5)일 때 타일 완료로 볼 수 있음
         completed_jobs = self._last_completed_jobs_fb
@@ -399,24 +414,31 @@ class FirebaseBridgeNode(Node):
             self._last_completed_jobs_fb = completed_jobs
 
         # --------------------------------------------------
-        # 파지(1) 완료 후 부착(2) 진입 직전 → 시멘트 TTS + 대기
-        # tile_step이 1 → 2로 바뀌는 순간 1회만 트리거
+        # state 문자열 기반 트리거
+        # "WAIT_HUMAN_TAKE" 포함 → waiting_pick
+        # "WAIT_CEMENT_DONE" 포함 → waiting_cement
         # --------------------------------------------------
-        if (
-            tile_step == 2
-            and self._last_tile_step_fb == 1
-            and not self._cement_waiting
-        ):
-            self.get_logger().info("[CEMENT] 파지 완료(1→2 전환) 감지 → 시멘트 TTS + 대기 시작")
-            self._cement_waiting = True
-            self.ref.update({"state": "시멘트 작업 대기 중"})
+        current_state = str(fb.state)
 
+        if "WAIT_HUMAN_TAKE" in current_state and "WAIT_HUMAN_TAKE" not in self._last_cowork_stage and not self._cement_waiting:
+            self.get_logger().info(f"[CEMENT] WAIT_HUMAN_TAKE 감지 → waiting_pick 시작 (state={current_state})")
+            self._cement_waiting = True
             self._cement_wait_thread = threading.Thread(
-                target=self._cement_wait_flow,
+                target=self._cement_pick_flow,
                 daemon=True,
             )
             self._cement_wait_thread.start()
 
+        elif "WAIT_CEMENT_DONE" in current_state and "WAIT_CEMENT_DONE" not in self._last_cowork_stage and not self._cement_waiting:
+            self.get_logger().info(f"[CEMENT] WAIT_CEMENT_DONE 감지 → waiting_cement 시작 (state={current_state})")
+            self._cement_waiting = True
+            self._cement_wait_thread = threading.Thread(
+                target=self._cement_done_flow,
+                daemon=True,
+            )
+            self._cement_wait_thread.start()
+
+        self._last_cowork_stage = current_state
         self._last_tile_step_fb = tile_step
 
         self.ref.update({
@@ -618,37 +640,25 @@ class FirebaseBridgeNode(Node):
     # ==================================================
     # 시멘트 대기 흐름 (STEP 1 완료 → 대기 → STEP 2 재개)
     # ==================================================
-    def _cement_wait_flow(self):
+    def _cement_pick_flow(self):
         """
-        새 시나리오 (2단계):
-
-        [1단계] 타일 파지 대기
-          - 웹 모달: waiting_pick
-          - TTS: "타일을 잡고 시멘트를 발라주세요"
-          - STT: "타일 잡았어" 계열 감지
-          - → ROS publish: /dsr01/cowork/human_take_confirm (Bool true)
-
-        [2단계] 시멘트 도포 대기
-          - 웹 모달: waiting_cement
-          - TTS: "시멘트를 다 바르면 타일을 주세요"
-          - STT: "시멘트 다 발랐어" 계열 감지
-          - TTS: "작업을 재개할게요"
-          - → ROS publish: /dsr01/cowork/cement_done (Bool true)
+        WAIT_HUMAN_TAKE 진입 시 실행
+        - 웹 팝업: waiting_pick
+        - TTS: "타일을 잡아주세요"
+        - STT: "타일 잡았어" 계열 감지
+        - → ROS publish: /dsr01/cowork/human_take_confirm (Bool true)
         """
         try:
-            PICK_KEYWORDS   = ["잡았어", "잡았다", "집었어", "잡았음", "타일 잡았어", "집었다"]
-            CEMENT_KEYWORDS = ["발랐어", "발랐다", "다 발랐어", "시멘트 다 발랐어", "완료", "됐어", "다됐어", "끝났어", "끝났다"]
+            PICK_KEYWORDS = ["잡았어", "잡았다", "집었어", "잡았음", "타일 잡았어", "집었다"]
 
-            # ── 1단계: 타일 파지 대기 ──────────────────────
-            # 모달 먼저 띄우고 → TTS 재생
             self.ref.update({
                 "state": "타일 파지 대기 중 - 타일을 잡으면 '타일 잡았어' 라고 말해주세요",
                 "cement_state": "waiting_pick",
             })
             self.get_logger().info("[CEMENT] 1단계: 타일 파지 대기")
             self.ref.update({"stt_mic_state": "tts_speaking"})
-            self._speak("타일을 잡고 시멘트를 발라주세요")
-            time.sleep(0.5)  # TTS 잔향 방지
+            self._speak("타일을 잡아주세요")
+            time.sleep(0.5)
 
             if self._stt is None:
                 self.get_logger().warn("[CEMENT] STT 없음. 5초 후 자동 진행합니다.")
@@ -659,10 +669,9 @@ class FirebaseBridgeNode(Node):
                 while not recognized:
                     try:
                         self.get_logger().info("[CEMENT] 🎙 타일 파지 음성 대기 중...")
-                        # 첫 시도만 캘리브레이션, 재시도는 바로 listening
                         if first_attempt:
                             self.ref.update({"stt_mic_state": "calibrating"})
-                        text = self._stt.speech2text()   # 내부에서 calibrate → listen (재시도 시 바로 listen)
+                        text = self._stt.speech2text()
                         first_attempt = False
                         self.get_logger().info(f"[CEMENT] STT 결과: '{text}'")
                         if any(kw in text for kw in PICK_KEYWORDS):
@@ -677,15 +686,29 @@ class FirebaseBridgeNode(Node):
                         first_attempt = False
                         time.sleep(1.0)
 
-            # → ROS: /dsr01/cowork/human_take_confirm = true
             msg_take = Bool()
             msg_take.data = True
             self._publish_reliable(self._pub_human_take, msg_take, retries=3)
             self.get_logger().info("[CEMENT] human_take_confirm 토픽 전송 완료")
             self.ref.update({"state": "타일 내려놓는 중", "cement_state": "tile_release", "stt_mic_state": ""})
 
-            # ── 2단계: 시멘트 도포 대기 ────────────────────
-            # 모달 먼저 띄우고 → TTS 재생
+        except Exception as e:
+            self.get_logger().error(f"[CEMENT] _cement_pick_flow 오류: {e}")
+        finally:
+            self._cement_waiting = False
+
+    def _cement_done_flow(self):
+        """
+        WAIT_CEMENT_DONE 진입 시 실행
+        - 웹 팝업: waiting_cement
+        - TTS: "시멘트를 발라주세요"
+        - STT: "시멘트 다 발랐어" 계열 감지
+        - TTS: "타일을 주세요"
+        - → ROS publish: /dsr01/cowork/cement_done (Bool true)
+        """
+        try:
+            CEMENT_KEYWORDS = ["발랐어", "발랐다", "다 발랐어", "시멘트 다 발랐어", "완료", "됐어", "다됐어", "끝났어", "끝났다"]
+
             self.ref.update({
                 "state": "시멘트 도포 대기 중 - 다 바르면 '시멘트 다 발랐어' 라고 말해주세요",
                 "cement_state": "waiting_cement",
@@ -693,8 +716,8 @@ class FirebaseBridgeNode(Node):
             })
             self.get_logger().info("[CEMENT] 2단계: 시멘트 도포 대기")
             self.ref.update({"stt_mic_state": "tts_speaking"})
-            self._speak("시멘트를 다 바르면 타일을 주세요")
-            time.sleep(0.5)  # TTS 잔향 방지
+            self._speak("시멘트를 발라주세요")
+            time.sleep(0.5)
 
             if self._stt is None:
                 self.get_logger().warn("[CEMENT] STT 없음. 5초 후 자동 재개합니다.")
@@ -705,10 +728,9 @@ class FirebaseBridgeNode(Node):
                 while not recognized:
                     try:
                         self.get_logger().info("[CEMENT] 🎙 시멘트 완료 음성 대기 중...")
-                        # 첫 시도만 캘리브레이션, 재시도는 바로 listening
                         if first_attempt:
                             self.ref.update({"stt_mic_state": "calibrating"})
-                        text = self._stt.speech2text()   # 내부에서 calibrate → listen (재시도 시 바로 listen)
+                        text = self._stt.speech2text()
                         first_attempt = False
                         self.get_logger().info(f"[CEMENT] STT 결과: '{text}'")
                         if any(kw in text for kw in CEMENT_KEYWORDS):
@@ -722,21 +744,26 @@ class FirebaseBridgeNode(Node):
                         self.ref.update({"stt_mic_state": "retry"})
                         first_attempt = False
                         time.sleep(1.0)
+
+            self.ref.update({"stt_mic_state": "tts_speaking"})
+            self._speak("타일을 주세요")
+            time.sleep(0.5)
+
             msg_cement = Bool()
             msg_cement.data = True
             self._publish_reliable(self._pub_cement_done, msg_cement, retries=3)
             self.get_logger().info("[CEMENT] cement_done 토픽 전송 완료")
 
-            # → 재개 TTS + Firebase 상태 업데이트
             self._speak("작업을 재개할게요")
             self.ref.update({
                 "state": "시멘트 완료 - 작업 재개",
                 "cement_state": "done",
+                "stt_mic_state": "",
             })
             self.get_logger().info("[CEMENT] 재개 완료")
 
         except Exception as e:
-            self.get_logger().error(f"[CEMENT] _cement_wait_flow 오류: {e}")
+            self.get_logger().error(f"[CEMENT] _cement_done_flow 오류: {e}")
         finally:
             self._cement_waiting = False
 
