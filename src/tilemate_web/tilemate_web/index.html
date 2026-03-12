@@ -65,6 +65,13 @@
         .tile.working  { background-color: #ffc107; border-color: #ff9800; color: white; }
         .tile.running  { background-color: #4caf50; border-color: #2e7d32; color: white; }
         .tile.finished { background-color: #1a237e; border-color: #0d124a; color: white; }
+
+        /* 검수 판정 결과 */
+        .tile.result-good     { background-color: #1b5e20; border-color: #2e7d32; color: #a5d6a7; }
+        .tile.result-rmse-bad { background-color: #7f1d1d; border-color: #c62828; color: #ffcdd2; }
+        .tile.result-rmse-warn{ background-color: #4a2c00; border-color: #e65100; color: #ffe0b2; }
+        .tile.result-tilt-bad { background-color: #1a237e; border-color: #283593; color: #bbdefb; }
+        .tile.result-both-bad { background-color: #4a1a4a; border-color: #7b1fa2; color: #e1bee7; }
         
         #three-container { width: 100%; height: 450px; background: #f8f9fa; border-radius: 12px; border: 1px solid #ccc; }
 
@@ -495,6 +502,26 @@
                     <div style="width: 20px; height: 20px; background: #ffffff; border: 2px solid #ccc; border-radius: 4px;"></div>
                     <span>흰색타일</span>
                 </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 20px; height: 20px; background: #1b5e20; border: 2px solid #2e7d32; border-radius: 4px;"></div>
+                    <span>정상</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 20px; height: 20px; background: #4a2c00; border: 2px solid #e65100; border-radius: 4px;"></div>
+                    <span>단차 주의</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 20px; height: 20px; background: #7f1d1d; border: 2px solid #c62828; border-radius: 4px;"></div>
+                    <span>단차 불량</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 20px; height: 20px; background: #1a237e; border: 2px solid #283593; border-radius: 4px;"></div>
+                    <span>기울기 불량</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <div style="width: 20px; height: 20px; background: #4a1a4a; border: 2px solid #7b1fa2; border-radius: 4px;"></div>
+                    <span>복합 불량</span>
+                </div>
             </div>
         </div>
         <div style="flex: 1.5; position: relative;">
@@ -521,6 +548,253 @@
             </div>
         </div>
     </div>
+
+    <!-- ══════════════════════════════════════════════════════
+         단차 검수 3D 뷰어 모달
+         tileStep === 4 (INSPECT) 진입 시 자동으로 열림
+         Firebase robot_status/inspection_result JSON을 받아 렌더링
+         ══════════════════════════════════════════════════════ -->
+    <div id="inspection-modal" style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 3000;
+        background: rgba(5, 8, 20, 0.82);
+        backdrop-filter: blur(6px);
+        align-items: center;
+        justify-content: center;
+    ">
+        <div style="
+            position: relative;
+            width: 92vw;
+            max-width: 1300px;
+            height: 88vh;
+            background: linear-gradient(135deg, #0b1120 0%, #111827 100%);
+            border: 1px solid rgba(96,165,250,0.25);
+            border-radius: 20px;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(96,165,250,0.08);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        ">
+            <!-- 모달 헤더 -->
+            <div style="
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 14px 22px;
+                border-bottom: 1px solid rgba(255,255,255,0.09);
+                background: rgba(0,0,0,0.25);
+                flex-shrink: 0;
+            ">
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <span style="
+                        background: linear-gradient(135deg,#1d4ed8,#0ea5e9);
+                        color: #fff;
+                        font-size: 0.72em;
+                        font-weight: 800;
+                        padding: 3px 10px;
+                        border-radius: 20px;
+                        letter-spacing: 1.5px;
+                    ">INSPECT</span>
+                    <div>
+                        <div style="color:#f3f4f6; font-size:1.1em; font-weight:700; letter-spacing:0.3px;">
+                            단차 검수 · Wall Tile Inspection 3D
+                        </div>
+                        <div style="color:#64748b; font-size:0.78em; margin-top:2px;">
+                            ROI 기반 wall / tile plane fitting 결과 시각화
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div id="insp-badge-frame" style="
+                        padding: 5px 12px; border-radius:999px; font-size:0.78em; font-weight:600;
+                        border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.06); color:#cbd5e1;
+                    ">frame: -</div>
+                    <div id="insp-badge-tiles" style="
+                        padding: 5px 12px; border-radius:999px; font-size:0.78em; font-weight:600;
+                        border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.06); color:#cbd5e1;
+                    ">tiles: 0</div>
+                    <div id="insp-badge-time" style="
+                        padding: 5px 12px; border-radius:999px; font-size:0.78em; font-weight:600;
+                        border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.06); color:#cbd5e1;
+                    ">time: -</div>
+                    <button onclick="closeInspectionModalWithResult()" style="
+                        background: rgba(239,68,68,0.15);
+                        border: 1px solid rgba(239,68,68,0.35);
+                        color: #fca5a5;
+                        border-radius: 10px;
+                        padding: 7px 16px;
+                        font-size: 0.88em;
+                        font-weight: 700;
+                        cursor: pointer;
+                        flex: unset;
+                        transition: 0.2s;
+                    " onmouseover="this.style.background='rgba(239,68,68,0.28)'"
+                       onmouseout="this.style.background='rgba(239,68,68,0.15)'">
+                        ✕ 닫기
+                    </button>
+                </div>
+            </div>
+
+            <!-- 모달 바디 -->
+            <div style="flex:1; display:flex; overflow:hidden; min-height:0;">
+
+                <!-- 왼쪽: 사이드 패널 -->
+                <div id="insp-side-panel" style="
+                    width: 320px;
+                    flex-shrink: 0;
+                    background: rgba(0,0,0,0.2);
+                    border-right: 1px solid rgba(255,255,255,0.07);
+                    overflow-y: auto;
+                    padding: 16px;
+                ">
+                    <!-- Legend -->
+                    <div style="margin-bottom:16px; padding:12px; background:rgba(255,255,255,0.04); border-radius:12px; border:1px solid rgba(255,255,255,0.07);">
+                        <div style="font-size:0.75em; color:#64748b; font-weight:700; margin-bottom:10px; letter-spacing:1px;">LEGEND</div>
+                        <div style="display:flex; align-items:center; gap:8px; font-size:0.82em; color:#cbd5e1; margin-bottom:7px;">
+                            <div style="width:12px; height:12px; border-radius:3px; background:#facc15; flex-shrink:0;"></div>
+                            Wall Plane
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; font-size:0.82em; color:#cbd5e1; margin-bottom:7px;">
+                            <div style="width:12px; height:12px; border-radius:3px; background:#22c55e; flex-shrink:0;"></div>
+                            Tile Plane
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; font-size:0.82em; color:#cbd5e1;">
+                            <div style="width:12px; height:12px; border-radius:3px; background:#60a5fa; flex-shrink:0;"></div>
+                            Normal / Helper
+                        </div>
+                    </div>
+
+                    <!-- Summary -->
+                    <div style="font-size:0.88em; font-weight:700; color:#f3f4f6; margin-bottom:10px;">Inspection Summary</div>
+                    <div id="insp-summary-content" style="color:#64748b; font-size:0.82em;">
+                        데이터 수신 대기 중...
+                    </div>
+                </div>
+
+                <!-- 오른쪽: Three.js 캔버스 영역 -->
+                <div style="flex:1; position:relative; overflow:hidden;">
+                    <div id="insp-three-container" style="width:100%; height:100%; background:#0b1120;"></div>
+
+                    <!-- 로딩 오버레이 -->
+                    <div id="insp-loading" style="
+                        position:absolute; inset:0;
+                        display:flex; flex-direction:column; align-items:center; justify-content:center;
+                        background: rgba(11,17,32,0.9);
+                        gap:14px;
+                        z-index: 10;
+                    ">
+                        <div style="font-size:2.5em;">📡</div>
+                        <div style="color:#60a5fa; font-weight:700; font-size:1em;">검수 데이터 수신 대기 중...</div>
+                        <div style="color:#334155; font-size:0.8em;">Firebase robot_status/inspection_result</div>
+                        <div style="
+                            width:200px; height:3px; background:#1e293b; border-radius:99px; overflow:hidden; margin-top:4px;
+                        ">
+                            <div style="
+                                height:100%; width:40%;
+                                background: linear-gradient(90deg, #1d4ed8, #38bdf8);
+                                border-radius:99px;
+                                animation: insp-loading-bar 1.4s ease-in-out infinite alternate;
+                            "></div>
+                        </div>
+                    </div>
+
+                    <!-- 툴바 -->
+                    <div id="insp-toolbar" style="
+                        position:absolute; right:14px; bottom:14px; z-index:20;
+                        display:flex; gap:8px; flex-wrap:wrap;
+                        background: rgba(0,0,0,0.45);
+                        border: 1px solid rgba(255,255,255,0.1);
+                        border-radius: 14px;
+                        padding: 8px 10px;
+                        backdrop-filter: blur(10px);
+                    ">
+                        <button id="insp-btn-points" onclick="inspTogglePoints()" style="
+                            border:1px solid rgba(96,165,250,0.4); background:rgba(96,165,250,0.15);
+                            color:#bfdbfe; border-radius:9px; padding:7px 13px; font-size:0.78em;
+                            font-weight:700; cursor:pointer; flex:unset; transition:0.15s;
+                        ">Points</button>
+                        <button id="insp-btn-normals" onclick="inspToggleNormals()" style="
+                            border:1px solid rgba(96,165,250,0.4); background:rgba(96,165,250,0.15);
+                            color:#bfdbfe; border-radius:9px; padding:7px 13px; font-size:0.78em;
+                            font-weight:700; cursor:pointer; flex:unset; transition:0.15s;
+                        ">Normals</button>
+                        <button id="insp-btn-wire" onclick="inspToggleWire()" style="
+                            border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05);
+                            color:#94a3b8; border-radius:9px; padding:7px 13px; font-size:0.78em;
+                            font-weight:700; cursor:pointer; flex:unset; transition:0.15s;
+                        ">Wireframe</button>
+                        <button id="insp-btn-rotate" onclick="inspToggleRotate()" style="
+                            border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05);
+                            color:#94a3b8; border-radius:9px; padding:7px 13px; font-size:0.78em;
+                            font-weight:700; cursor:pointer; flex:unset; transition:0.15s;
+                        ">Auto Rotate</button>
+                    </div>
+
+                    <!-- 힌트 -->
+                    <div style="
+                        position:absolute; right:14px; top:14px; z-index:20;
+                        padding:7px 12px; font-size:0.72em; color:#475569;
+                        background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.07);
+                        border-radius:10px; backdrop-filter:blur(8px);
+                        pointer-events:none;
+                    ">마우스 좌클릭: 회전 · 우클릭: 이동 · 휠: 줌</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes insp-loading-bar {
+            0%   { transform: translateX(-100%); }
+            100% { transform: translateX(350%); }
+        }
+        #insp-side-panel::-webkit-scrollbar { width: 6px; }
+        #insp-side-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius:99px; }
+
+        .insp-section {
+            margin-bottom: 12px;
+            padding: 11px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+        }
+        .insp-section h3 {
+            margin: 0 0 9px 0;
+            font-size: 0.82em;
+            color: #f3f4f6;
+            font-weight: 700;
+        }
+        .insp-kv {
+            display: grid;
+            grid-template-columns: 68px 1fr;
+            gap: 5px 8px;
+            font-size: 0.76em;
+            line-height: 1.45;
+        }
+        .insp-kv .k { color: #64748b; }
+        .insp-kv .v { color: #cbd5e1; }
+        .insp-tile-card {
+            margin-top: 8px;
+            padding: 9px 10px;
+            border-radius: 10px;
+            background: rgba(34,197,94,0.06);
+            border: 1px solid rgba(34,197,94,0.18);
+        }
+        .insp-tile-name {
+            font-size: 0.78em;
+            font-weight: 700;
+            margin-bottom: 7px;
+            color: #bbf7d0;
+        }
+        .insp-btn-active {
+            border-color: rgba(96,165,250,0.55) !important;
+            background: rgba(96,165,250,0.22) !important;
+            color: #bfdbfe !important;
+        }
+    </style>
 
     <div class="popup-overlay" id="finish-popup">
         <div class="popup-box" style="width: 400px; text-align: center;">
@@ -1039,6 +1313,7 @@
         if (data.design !== undefined && data.design !== null) currentDesign = parseInt(data.design);
         const currentJobs = data.completed_jobs || 0;
         const workingTileId = (data.working_tile !== undefined) ? parseInt(data.working_tile) + 1 : currentJobs + 1;
+        _currentWorkingTileId = workingTileId; // 전역 캐시 업데이트
 
         // Firebase에서 이미 작업이 진행 중이면 isStarted를 자동으로 true로 설정
         // (페이지를 새로 열어도 진행 중인 작업 상태를 즉시 반영)
@@ -1067,69 +1342,70 @@
         }
         updateProcessStep(activeUiStep);
 
-        // ── 4. 현재 작업 중인 타일의 렌더링 로직 (Step 1~4) ──
+        // ── 4. 현재 작업 중인 타일의 렌더링 로직 ──
         if (isStarted && overallStep === 1 && workingTileId >= 1 && workingTileId <= TOTAL_TILES) {
             const tileEl = document.getElementById(`tile-${workingTileId}`);
-            if (tileEl && tileState[workingTileId] !== 'running' && tileState[workingTileId] !== 'finished') {
-                
-                // 타일 기본 색상 적용
-                const tColor = getTileColor(currentDesign, workingTileId);
-                const isBlack = (tColor === 0x212121);
-                tileEl.style.backgroundColor = isBlack ? '#212121' : '#ffffff';
-                tileEl.style.borderColor = isBlack ? '#000000' : '#cccccc';
-                
-                // 3D 뷰 색상 업데이트
-                tiles3D[workingTileId - 1].material.color.setHex(tColor !== null ? tColor : 0xffffff);
+            const tColor = getTileColor(currentDesign, workingTileId);
+            const isBlack = (tColor === 0x212121);
 
-                // 1) 파지(PICK) & COWORK(툴에 두기/시멘트) & 부착(PLACE) 단계: 파이차트 활성화
-                if (tileStep === 1 || tileStep === 2 || tileStep === 3) {
-                    tileEl.classList.add('working');
-                    tileEl.style.color = isBlack ? '#ffffff' : '#333333';
-                    if (tileStep === 1)      tileEl.innerText = '파지 중';
-                    else if (tileStep === 2) tileEl.innerText = '시멘트';
-                    else                    tileEl.innerText = '부착 중';
-                    tileState[workingTileId] = 'working';
-                    
-                    const tileProgress = data.tile_progress || 0.0;
-                    const overlayColor = isBlack ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.2)';
-                    // 타일이 바뀌었으면 현재값 리셋, 목표값만 업데이트 → _pieLoop이 부드럽게 따라감
-                    if (_pieEl !== tileEl) { _pieCurrent = 0.0; }
-                    _pieEl    = tileEl;
-                    _pieColor = overlayColor;
-                    _pieTarget = tileProgress;
-                } 
-                // 2) 단차 검수(INSPECT) 단계
-                else if (tileStep === 4) {
-                    tileEl.classList.remove('working');
-                    tileEl.style.backgroundImage = ''; // 파이차트 지우기
-                    _pieEl = null; _pieCurrent = 0.0; _pieTarget = 0.0; // 파이 애니메이션 초기화
-                    
-                    const levelVal = (data.tile_level != null) ? parseFloat(data.tile_level) : 0.0;
-                    if (levelVal > 0) {
-                        if (levelVal >= 1.5) {
-                            tileEl.style.color = isBlack ? '#ffaaaa' : '#c62828';
-                            tileEl.innerText = `압착필요\n${levelVal.toFixed(2)}mm`;
-                        } else {
-                            tileEl.style.color = isBlack ? '#aaffaa' : '#2e7d32';
-                            tileEl.innerText = `단차양호\n${levelVal.toFixed(2)}mm`;
+            // COMPACT(5) 진입 시: 보호 조건 완전 무시하고 판정 결과 표시
+            // (tileState가 'checking'이어도 반드시 실행돼야 함)
+            if (tileStep === 5 && _lastInspTileStep === 4) {
+                _pieEl = null; _pieCurrent = 0.0; _pieTarget = 0.0;
+                if (tileEl) tileEl.style.backgroundImage = '';
+                closeInspectionModalWithResult();
+
+            // 판정 결과 / checking 상태면 이후 업데이트 차단
+            } else {
+                const _protectedStates = ['checking','result-good','result-rmse-bad','result-rmse-warn','result-tilt-bad','result-both-bad'];
+                if (tileEl && tileState[workingTileId] !== 'running' && tileState[workingTileId] !== 'finished' && !_protectedStates.includes(tileState[workingTileId])) {
+
+                    // 타일 기본 색상 적용
+                    tileEl.style.backgroundColor = isBlack ? '#212121' : '#ffffff';
+                    tileEl.style.borderColor = isBlack ? '#000000' : '#cccccc';
+                    tiles3D[workingTileId - 1].material.color.setHex(tColor !== null ? tColor : 0xffffff);
+
+                    // 1) PICK / COWORK / PLACE: 파이차트
+                    if (tileStep === 1 || tileStep === 2 || tileStep === 3) {
+                        tileEl.classList.add('working');
+                        tileEl.style.color = isBlack ? '#ffffff' : '#333333';
+                        if (tileStep === 1)      tileEl.innerText = '파지 중';
+                        else if (tileStep === 2) tileEl.innerText = '시멘트';
+                        else                    tileEl.innerText = '부착 중';
+                        tileState[workingTileId] = 'working';
+                        const tileProgress = data.tile_progress || 0.0;
+                        const overlayColor = isBlack ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.2)';
+                        if (_pieEl !== tileEl) { _pieCurrent = 0.0; }
+                        _pieEl = tileEl; _pieColor = overlayColor; _pieTarget = tileProgress;
+
+                    // 2) INSPECT: 모달 오픈 + "검수 중..."
+                    } else if (tileStep === 4) {
+                        tileEl.classList.remove('working');
+                        tileEl.style.backgroundImage = '';
+                        _pieEl = null; _pieCurrent = 0.0; _pieTarget = 0.0;
+                        if (_lastInspTileStep !== 4) {
+                            openInspectionModal();
+                            if (_lastInspectionData && _inspInitialized) renderInspectionData(_lastInspectionData);
+                            tileEl.style.color = isBlack ? '#ffffff' : '#555555';
+                            tileEl.innerText = '검수 중...';
                         }
-                    } else {
-                        tileEl.style.color = isBlack ? '#ffffff' : '#555555';
-                        tileEl.innerText = '단차\n확인 중';
+                        tileState[workingTileId] = 'checking';
+
+                    // 3) COMPACT(4에서 온 게 아닌 경우): "압착 중"
+                    } else if (tileStep === 5) {
+                        tileEl.classList.remove('working');
+                        tileEl.style.backgroundImage = '';
+                        _pieEl = null; _pieCurrent = 0.0; _pieTarget = 0.0;
+                        tileEl.style.color = isBlack ? '#aaffaa' : '#2e7d32';
+                        tileEl.innerText = '압착 중';
+                        tileState[workingTileId] = 'pressing';
                     }
-                    tileState[workingTileId] = 'checking';
-                }
-                // 3) 압착 보정(COMPACT) 단계
-                else if (tileStep === 5) {
-                    tileEl.classList.remove('working');
-                    tileEl.style.backgroundImage = '';
-                    _pieEl = null; _pieCurrent = 0.0; _pieTarget = 0.0; // 파이 애니메이션 초기화
-                    tileEl.style.color = isBlack ? '#aaffaa' : '#2e7d32';
-                    tileEl.innerText = '압착 중';
-                    tileState[workingTileId] = 'pressing';
                 }
             }
         }
+
+        // tileStep 추적 (INSPECT 모달 자동 열기/닫기용)
+        _lastInspTileStep = tileStep;
 
         // ── 5. 작업이 완료(DONE)된 타일들 타이머 시작 처리 ──
         // prevCompletedJobs === 0이고 currentJobs > 0이면 페이지 새로고침 후 첫 수신 → 완료 타일 즉시 복원
@@ -1392,10 +1668,12 @@
         document.getElementById('overall-progress-bar').style.width = '0%';
         document.getElementById('overall-progress-text').innerText = '0.0%';
         document.getElementById('cement-modal').classList.remove('show');
+        closeInspectionModal();
+        _lastInspTileStep = -1;
         for (let i = 1; i <= TOTAL_TILES; i++) {
             tileState[i] = 'empty';
             const el = document.getElementById(`tile-${i}`);
-            if (el) { el.classList.remove('working', 'coated', 'running', 'finished'); el.style.backgroundColor = ''; el.style.borderColor = ''; el.innerText = ''; el.style.backgroundImage = ''; }
+            if (el) { el.classList.remove('working', 'coated', 'running', 'finished', 'result-good', 'result-rmse-bad', 'result-rmse-warn', 'result-tilt-bad', 'result-both-bad'); el.style.backgroundColor = ''; el.style.borderColor = ''; el.innerText = ''; el.style.backgroundImage = ''; }
         }
         tiles3D.forEach(mesh => mesh.material.color.setHex(0xaaaaaa));
         updateProcessStep(0); hidePatternPreview();
@@ -2047,6 +2325,378 @@
     function openDepthViewerPage() {
         openPointCloudViewer();
     }
+
+    /* ════════════════════════════════════════════════════════
+       단차 검수 3D 뷰어 모달
+       Three.js ES Module을 동적 import로 로드
+       ════════════════════════════════════════════════════════ */
+
+    let _inspScene, _inspCamera, _inspRenderer, _inspControls;
+    let _inspMeshes = [], _inspPointClouds = [], _inspArrows = [];
+    let _inspWorldGroup;
+    let _inspAutoRotate = false;
+    let _inspWireframe = false;
+    let _inspShowPoints = true;
+    let _inspShowNormals = true;
+    let _inspInitialized = false;
+    let _inspAnimId = null;
+    let _lastInspTileStep = -1;
+    let _currentWorkingTileId = 1; // workingTileId 전역 캐시 (closeInspectionModalWithResult에서 사용)
+
+    // 단차 검수 모달 열기
+    function openInspectionModal() {
+        const modal = document.getElementById('inspection-modal');
+        modal.style.display = 'flex';
+        if (!_inspInitialized) {
+            _initInsp3D();
+        }
+    }
+
+    let _lastInspectionData = null; // 마지막으로 받은 inspection_result 캐시
+
+    // 단차 검수 모달 닫기
+    function closeInspectionModal() {
+        document.getElementById('inspection-modal').style.display = 'none';
+    }
+
+    // 모달 닫기 버튼 or 자동 닫힘 시 판정 결과 즉시 표시
+    function closeInspectionModalWithResult() {
+        closeInspectionModal();
+        // workingTileId는 Firebase 콜백 내 지역변수라 여기서 접근 불가 → 전역 캐시 사용
+        const capturedTileId = _currentWorkingTileId;
+        console.log('[INSPECT] 판정 실행 tileId=', capturedTileId, 'data=', !!_lastInspectionData);
+        if (_lastInspectionData) {
+            _judgeInspectionResult(_lastInspectionData, capturedTileId);
+        } else {
+            console.warn('[INSPECT] _lastInspectionData 없음 - JSON 업로드 확인 필요');
+        }
+    }
+    /* RMSE:   < 1.5mm → 정상 / 1.5~3mm → 주의 / > 3mm → 불량
+       기울기: Roll/Pitch/Yaw 중 하나라도 |5°| 이상 → 불량
+    ────────────────────────────────────────────────────── */
+    function _judgeInspectionResult(inspData, tileId) {
+        if (!inspData || !inspData.tiles || inspData.tiles.length === 0) return;
+
+        // tileId 미전달 시 현재 workingTileId 사용 (fallback)
+        if (tileId === undefined) tileId = workingTileId;
+
+        const tile = inspData.tiles[0];
+        if (!tile) return;
+
+        const tileEl = document.getElementById(`tile-${tileId}`);
+        if (!tileEl) return;
+
+        const rmse  = parseFloat(tile.rmse_mm   || 0);
+        const roll  = Math.abs(parseFloat(tile.roll_deg  || 0));
+        const pitch = Math.abs(parseFloat(tile.pitch_deg || 0));
+        const yaw   = Math.abs(parseFloat(tile.yaw_deg   || 0));
+
+        const TILT_THRESHOLD = 5.0; // 기울기 불량 기준 (도)
+
+        const rmseBad  = rmse  >= 3.0;
+        const rmseWarn = rmse  >= 1.5 && rmse < 3.0;
+        const tiltBad  = roll >= TILT_THRESHOLD || pitch >= TILT_THRESHOLD || yaw >= TILT_THRESHOLD;
+
+        // 기존 클래스 초기화
+        tileEl.classList.remove(
+            'working', 'coated', 'running', 'finished',
+            'result-good', 'result-rmse-bad', 'result-rmse-warn',
+            'result-tilt-bad', 'result-both-bad'
+        );
+        tileEl.style.backgroundImage = '';
+        tileEl.style.backgroundColor = '';
+        tileEl.style.borderColor = '';
+        tileEl.style.color = '';
+
+        // 판정 결과에 따른 표시
+        if (rmseBad && tiltBad) {
+            // 단차 불량 + 기울기 불량 (복합)
+            tileEl.classList.add('result-both-bad');
+            tileEl.innerText = `복합 불량\n${rmse.toFixed(2)}mm`;
+            tileState[tileId] = 'result-both-bad';
+        } else if (rmseBad) {
+            // 단차 불량
+            tileEl.classList.add('result-rmse-bad');
+            tileEl.innerText = `단차 불량\n${rmse.toFixed(2)}mm`;
+            tileState[tileId] = 'result-rmse-bad';
+        } else if (rmseWarn && tiltBad) {
+            // 단차 주의 + 기울기 불량
+            tileEl.classList.add('result-both-bad');
+            tileEl.innerText = `기울기+단차\n${rmse.toFixed(2)}mm`;
+            tileState[tileId] = 'result-both-bad';
+        } else if (rmseWarn) {
+            // 단차 주의
+            tileEl.classList.add('result-rmse-warn');
+            tileEl.innerText = `단차 주의\n${rmse.toFixed(2)}mm`;
+            tileState[tileId] = 'result-rmse-warn';
+        } else if (tiltBad) {
+            // 기울기 불량
+            const maxTilt = Math.max(roll, pitch, yaw).toFixed(1);
+            tileEl.classList.add('result-tilt-bad');
+            tileEl.innerText = `기울기 불량\n${maxTilt}°`;
+            tileState[tileId] = 'result-tilt-bad';
+        } else {
+            // 정상
+            tileEl.classList.add('result-good');
+            tileEl.innerText = `정상\n${rmse.toFixed(2)}mm`;
+            tileState[tileId] = 'result-good';
+        }
+    }
+
+    // Three.js 초기화 (동적 import)
+    async function _initInsp3D() {
+        if (_inspInitialized) return;
+        _inspInitialized = true;
+
+        // 기존 index.html과 Three.js 버전 일치 (r128 CDN 이미 로드됨)
+        // window.THREE가 이미 있으므로 그대로 활용
+        const container = document.getElementById('insp-three-container');
+
+        _inspScene = new THREE.Scene();
+        _inspScene.background = new THREE.Color(0x0b1120);
+
+        // 그리드
+        const grid = new THREE.GridHelper(1.2, 20, 0x1e3a5f, 0x0f1f35);
+        grid.position.y = -0.22;
+        _inspScene.add(grid);
+
+        // 축
+        const axes = new THREE.AxesHelper(0.08);
+        _inspScene.add(axes);
+
+        // 조명
+        _inspScene.add(new THREE.AmbientLight(0xffffff, 0.9));
+        const d1 = new THREE.DirectionalLight(0xffffff, 1.0);
+        d1.position.set(1, 1, 1);
+        _inspScene.add(d1);
+        const d2 = new THREE.DirectionalLight(0xffffff, 0.45);
+        d2.position.set(-1, 0.5, -0.5);
+        _inspScene.add(d2);
+
+        _inspCamera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.001, 50);
+        _inspCamera.position.set(0.35, 0.25, 0.7);
+
+        _inspRenderer = new THREE.WebGLRenderer({ antialias: true });
+        _inspRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        _inspRenderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(_inspRenderer.domElement);
+
+        _inspControls = new THREE.OrbitControls(_inspCamera, _inspRenderer.domElement);
+        _inspControls.enableDamping = true;
+        _inspControls.dampingFactor = 0.06;
+
+        _inspWorldGroup = new THREE.Group();
+        _inspScene.add(_inspWorldGroup);
+
+        _animateInsp();
+
+        // 리사이즈 대응
+        window.addEventListener('resize', () => {
+            if (!_inspRenderer) return;
+            _inspCamera.aspect = container.clientWidth / container.clientHeight;
+            _inspCamera.updateProjectionMatrix();
+            _inspRenderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    }
+
+    function _animateInsp() {
+        _inspAnimId = requestAnimationFrame(_animateInsp);
+        if (_inspAutoRotate && _inspWorldGroup) _inspWorldGroup.rotation.y += 0.003;
+        if (_inspControls) _inspControls.update();
+        if (_inspRenderer && _inspScene && _inspCamera) {
+            _inspRenderer.render(_inspScene, _inspCamera);
+        }
+    }
+
+    // 씬 초기화
+    function _clearInspWorld() {
+        if (!_inspWorldGroup) return;
+        while (_inspWorldGroup.children.length > 0) {
+            const child = _inspWorldGroup.children[0];
+            _inspWorldGroup.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                else child.material.dispose();
+            }
+        }
+        _inspMeshes = []; _inspPointClouds = []; _inspArrows = [];
+    }
+
+    function _inspMakeMesh(vertices, indices, color) {
+        const geometry = new THREE.BufferGeometry();
+        const flat = new Float32Array(vertices.flat());
+        geometry.setAttribute('position', new THREE.BufferAttribute(flat, 3));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+        const mat = new THREE.MeshPhongMaterial({
+            color: new THREE.Color(color[0], color[1], color[2]),
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.58,
+            wireframe: _inspWireframe,
+        });
+        const mesh = new THREE.Mesh(geometry, mat);
+        _inspMeshes.push(mesh);
+        return mesh;
+    }
+
+    function _inspMakePoints(points, color) {
+        const geometry = new THREE.BufferGeometry();
+        const flat = new Float32Array(points.flat());
+        geometry.setAttribute('position', new THREE.BufferAttribute(flat, 3));
+        const mat = new THREE.PointsMaterial({
+            color: new THREE.Color(color[0], color[1], color[2]),
+            size: 0.008,
+            sizeAttenuation: true,
+        });
+        const pts = new THREE.Points(geometry, mat);
+        pts.visible = _inspShowPoints;
+        _inspPointClouds.push(pts);
+        return pts;
+    }
+
+    function _inspMakeArrow(centroid, normal, color, length = 0.06) {
+        const origin = new THREE.Vector3(...centroid);
+        const dir = new THREE.Vector3(...normal).normalize();
+        const hex = new THREE.Color(color[0], color[1], color[2]).getHex();
+        const arrow = new THREE.ArrowHelper(dir, origin, length, hex, 0.016, 0.009);
+        arrow.visible = _inspShowNormals;
+        _inspArrows.push(arrow);
+        return arrow;
+    }
+
+    function _inspAddPlane(obj) {
+        const group = new THREE.Group();
+        group.add(_inspMakeMesh(obj.patch_vertices, obj.patch_indices, obj.color));
+        group.add(_inspMakePoints(obj.sample_points, obj.color));
+        group.add(_inspMakeArrow(obj.centroid, obj.normal, obj.color));
+        if (obj.center_point) {
+            const sg = new THREE.SphereGeometry(0.006, 16, 16);
+            const sm = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(obj.color[0], obj.color[1], obj.color[2])
+            });
+            const sphere = new THREE.Mesh(sg, sm);
+            sphere.position.set(...obj.center_point);
+            group.add(sphere);
+        }
+        _inspWorldGroup.add(group);
+    }
+
+    function _inspFitCamera() {
+        const box = new THREE.Box3().setFromObject(_inspWorldGroup);
+        if (box.isEmpty()) return;
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 0.08);
+        const dist = maxDim * 2.6;
+        _inspCamera.position.set(center.x + dist, center.y + dist * 0.75, center.z + dist);
+        _inspCamera.lookAt(center);
+        _inspControls.target.copy(center);
+        _inspControls.update();
+    }
+
+    function _fmt(v, d = 3) {
+        if (v === null || v === undefined || Number.isNaN(v)) return '-';
+        return Number(v).toFixed(d);
+    }
+
+    function _buildInspSummaryHtml(data) {
+        const w = data.wall;
+        let rmseColor = w.rmse_mm > 3 ? '#f87171' : w.rmse_mm > 1.5 ? '#fbbf24' : '#4ade80';
+        let html = `
+            <div class="insp-section">
+                <h3>🧱 Wall</h3>
+                <div class="insp-kv">
+                    <div class="k">ROI</div><div class="v">[${w.roi.join(', ')}]</div>
+                    <div class="k">RMSE</div><div class="v" style="color:${rmseColor}; font-weight:700;">${_fmt(w.rmse_mm)} mm</div>
+                    <div class="k">Roll</div><div class="v">${_fmt(w.roll_deg, 2)}°</div>
+                    <div class="k">Pitch</div><div class="v">${_fmt(w.pitch_deg, 2)}°</div>
+                    <div class="k">Yaw</div><div class="v">${_fmt(w.yaw_deg, 2)}°</div>
+                    <div class="k">Normal</div><div class="v">[${w.normal.map(v => _fmt(v, 4)).join(', ')}]</div>
+                </div>
+            </div>
+            <div class="insp-section"><h3>🔲 Tiles</h3>
+        `;
+        for (const tile of data.tiles) {
+            const tc = tile.rmse_mm > 3 ? '#f87171' : tile.rmse_mm > 1.5 ? '#fbbf24' : '#4ade80';
+            html += `
+                <div class="insp-tile-card">
+                    <div class="insp-tile-name">Tile ${tile.name}</div>
+                    <div class="insp-kv">
+                        <div class="k">ROI</div><div class="v">[${tile.roi.join(', ')}]</div>
+                        <div class="k">RMSE</div><div class="v" style="color:${tc}; font-weight:700;">${_fmt(tile.rmse_mm)} mm</div>
+                        <div class="k">Roll</div><div class="v">${_fmt(tile.roll_deg, 2)}°</div>
+                        <div class="k">Pitch</div><div class="v">${_fmt(tile.pitch_deg, 2)}°</div>
+                        <div class="k">Yaw</div><div class="v">${_fmt(tile.yaw_deg, 2)}°</div>
+                        <div class="k">Normal</div><div class="v">[${tile.normal.map(v => _fmt(v, 4)).join(', ')}]</div>
+                    </div>
+                </div>
+            `;
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // Firebase에서 받은 inspection_result JSON으로 씬 렌더링
+    function renderInspectionData(data) {
+        if (!_inspInitialized) return;
+        _clearInspWorld();
+
+        _inspAddPlane(data.wall);
+        for (const tile of data.tiles) _inspAddPlane(tile);
+        _inspFitCamera();
+
+        // 배지 업데이트
+        document.getElementById('insp-badge-frame').textContent = `frame: ${data.frame_id ?? '-'}`;
+        document.getElementById('insp-badge-tiles').textContent = `tiles: ${data.tiles?.length ?? 0}`;
+        const ts = data.timestamp_sec ? new Date(data.timestamp_sec * 1000).toLocaleTimeString() : '-';
+        document.getElementById('insp-badge-time').textContent = `time: ${ts}`;
+
+        // 사이드패널 요약
+        document.getElementById('insp-summary-content').innerHTML = _buildInspSummaryHtml(data);
+
+        // 로딩 오버레이 제거
+        document.getElementById('insp-loading').style.display = 'none';
+    }
+
+    // 툴바 버튼 토글
+    function inspTogglePoints() {
+        _inspShowPoints = !_inspShowPoints;
+        _inspPointClouds.forEach(p => p.visible = _inspShowPoints);
+        document.getElementById('insp-btn-points').classList.toggle('insp-btn-active', _inspShowPoints);
+    }
+    function inspToggleNormals() {
+        _inspShowNormals = !_inspShowNormals;
+        _inspArrows.forEach(a => a.visible = _inspShowNormals);
+        document.getElementById('insp-btn-normals').classList.toggle('insp-btn-active', _inspShowNormals);
+    }
+    function inspToggleWire() {
+        _inspWireframe = !_inspWireframe;
+        _inspMeshes.forEach(m => m.material.wireframe = _inspWireframe);
+        document.getElementById('insp-btn-wire').classList.toggle('insp-btn-active', _inspWireframe);
+    }
+    function inspToggleRotate() {
+        _inspAutoRotate = !_inspAutoRotate;
+        document.getElementById('insp-btn-rotate').classList.toggle('insp-btn-active', _inspAutoRotate);
+    }
+
+    // ── Firebase inspection_result 실시간 감시 ──
+    database.ref('robot_status/inspection_result').on('value', (snap) => {
+        const data = snap.val();
+        if (!data) return;
+
+        // 항상 캐시에 저장 (모달 닫힐 때 즉시 판정에 사용)
+        _lastInspectionData = data;
+
+        // 검수 모달이 열려있을 때 3D 렌더링
+        const modal = document.getElementById('inspection-modal');
+        if (modal.style.display === 'flex' && _inspInitialized) {
+            renderInspectionData(data);
+        }
+    });
+
+
 </script>
 </body>
 </html>

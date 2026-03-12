@@ -184,6 +184,10 @@ class ActionHandlerMixin:
         current_state = str(fb.state)
         self._handle_cowork_state(current_state)
 
+        if tile_step == 4 and self._last_tile_step_fb != 4:
+            self.get_logger().info("[INSPECT] 단차 검수 시작 → inspection_result 초기화")
+            self.ref.update({"inspection_result": None})
+
         self._last_cowork_stage = current_state
         self._last_tile_step_fb = tile_step
 
@@ -244,3 +248,17 @@ class ActionHandlerMixin:
             self.ref.update({"state": "작업 취소 요청됨"})
         except Exception as e:
             self.get_logger().error(f"[TASK_JOB] cancel result error: {e}")
+    def _upload_inspection_result(self):
+        """JSON 파일을 읽어 Firebase inspection_result에 업로드."""
+        import json
+        from .constants import INSPECTION_RESULT_PATH
+        try:
+            with open(INSPECTION_RESULT_PATH, "r") as f:
+                data = json.load(f)
+            self.ref.update({"inspection_result": data})
+            self.get_logger().info("[INSPECT] inspection_result 업로드 완료")
+        except FileNotFoundError:
+            self.get_logger().warn(f"[INSPECT] 파일 없음: {INSPECTION_RESULT_PATH}")
+            self.ref.update({"inspection_result": None})
+        except Exception as e:
+            self.get_logger().error(f"[INSPECT] 업로드 실패: {e}")

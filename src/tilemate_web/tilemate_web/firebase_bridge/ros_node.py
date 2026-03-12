@@ -91,7 +91,7 @@ class FirebaseBridgeNode(ActionHandlerMixin, SensorHandlerMixin, CoworkFlowMixin
         self.create_subscription(Float32,          "/robot/tile_level",     self._cb_tile_level,    10)
         self.create_subscription(Int32,            "/robot/tile_inspect_no",self._cb_tile_inspect_no,10)
         self.create_subscription(Int32,            "/robot/pressing_no",    self._cb_pressing_no,   10)
-
+        self.create_subscription(String,           "/robot/inspection_result", self._cb_inspection_result, 10)
         # Action client
         self.task_job_client = ActionClient(self, ExecuteJob, "/task/run_job")
 
@@ -223,3 +223,11 @@ class FirebaseBridgeNode(ActionHandlerMixin, SensorHandlerMixin, CoworkFlowMixin
 
     def _cb_pressing_no(self, msg: Int32):
         self.ref.update({"press_no": int(msg.data)})
+    def _cb_inspection_result(self, msg: String):
+        import json
+        try:
+            data = json.loads(msg.data)
+            self.ref.update({"inspection_result": data})
+            self.get_logger().info("[INSPECT] inspection_result Firebase 업로드 완료")
+        except Exception as e:
+            self.get_logger().error(f"[INSPECT] JSON 파싱 오류: {e}")

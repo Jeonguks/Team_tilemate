@@ -26,7 +26,7 @@ setup(
         'console_scripts': [
             'fire=tilemate_web.firebase_bridge:main',
             'firebase=tilemate_web.firebase_bridge.firebase_bridge:main',
-            'no=tilemate_web.testno:main',
+            'no=tilemate_web.test:main',
             'web=tilemate_web.websocket_bridge:main',
         ],
     },
