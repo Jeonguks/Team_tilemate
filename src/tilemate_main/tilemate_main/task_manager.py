@@ -14,8 +14,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from action_msgs.msg import GoalStatus
 
-from tilemate_msgs.srv import Inspect
-from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile, Cowork
+from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile, Cowork, Inspect
 from tilemate_main.robot_config import RobotConfig
 
 
@@ -25,6 +24,7 @@ class TileRunContext:
     tile_index: int
     tile_type: int
     total_tiles: int
+
 
 @dataclass
 class TileStepDef:
@@ -85,8 +85,8 @@ class TaskManagerNode(Node):
         self.place_client = ActionClient(
             self, PlaceTile, f"{robot_ns}/tile/place_press", callback_group=self.cb_group
         )
-        self.inspect_client = self.create_client(
-            Inspect, f"{robot_ns}/tile/inspect", callback_group=self.cb_group
+        self.inspect_client = ActionClient(
+            self, Inspect, f"{robot_ns}/tile/inspect", callback_group=self.cb_group
         )
 
         self._current_total_tiles = 0
@@ -95,7 +95,6 @@ class TaskManagerNode(Node):
         self.current_detail_step = self.TILE_STEP_IDLE
         self.current_detail_progress = 0.0
         self.current_state = ""
-
 
         self.tile_steps = [
             TileStepDef(self.TILE_STEP_PICK, "pick", self._step_pick),
@@ -306,6 +305,29 @@ class TaskManagerNode(Node):
             )
         return _cb
 
+    def _make_inspect_feedback_cb(self, goal_handle, tile_index: int, tile_type: int):
+        def _cb(feedback_msg):
+            fb = feedback_msg.feedback
+            step = int(getattr(fb, "step", 0))
+            progress = float(getattr(fb, "progress", 0.0))
+            state = str(getattr(fb, "state", "inspect"))
+
+            # Inspect action의 progress가 0~100이면 0~1로 정규화
+            if progress > 1.0:
+                progress = progress / 100.0
+
+            progress = max(0.0, min(1.0, progress))
+
+            self._update_and_publish_feedback(
+                goal_handle=goal_handle,
+                tile_index=tile_index,
+                tile_type=tile_type,
+                detail_step=self.TILE_STEP_INSPECT,
+                detail_progress=progress,
+                state=f"inspect:{step}:{state}",
+            )
+        return _cb
+
     # --------------------------------------------------
     # generic action runner
     # --------------------------------------------------
@@ -365,7 +387,6 @@ class TaskManagerNode(Node):
     # --------------------------------------------------
     # specific subtasks
     # --------------------------------------------------
-
     async def _step_pick(self, ctx: TileRunContext):
         return await self.call_pick_tile(
             goal_handle=ctx.goal_handle,
@@ -395,7 +416,6 @@ class TaskManagerNode(Node):
             tile_type=ctx.tile_type,
             total_tiles=ctx.total_tiles,
         )
-
 
     async def call_pick_tile(self, goal_handle, tile_index, tile_type):
         goal = PickTile.Goal()
@@ -444,8 +464,7 @@ class TaskManagerNode(Node):
     async def call_inspect(self, goal_handle, tile_index, tile_type, total_tiles):
         del total_tiles
 
-        if self.kill_requested:
-            return False, "killed_before_inspect"
+        goal = Inspect.Goal()
 
         self._update_and_publish_feedback(
             goal_handle=goal_handle,
@@ -453,48 +472,17 @@ class TaskManagerNode(Node):
             tile_type=tile_type,
             detail_step=self.TILE_STEP_INSPECT,
             detail_progress=0.0,
-            state="inspect:waiting_service",
+            state="inspect:goal_send",
         )
 
-        if not self.inspect_client.wait_for_service(timeout_sec=2.0):
-            return False, "inspect_service_unavailable"
-
-        aborted, msg = self._check_abort_requested(goal_handle, "before_inspect_call")
-        if aborted:
-            return False, msg
-
-        self._update_and_publish_feedback(
+        return await self._run_action_subtask(
+            client=self.inspect_client,
+            client_name="inspect_action",
+            goal_msg=goal,
+            feedback_callback=self._make_inspect_feedback_cb(goal_handle, tile_index, tile_type),
             goal_handle=goal_handle,
-            tile_index=tile_index,
-            tile_type=tile_type,
-            detail_step=self.TILE_STEP_INSPECT,
-            detail_progress=0.3,
-            state="inspect:calling_service",
+            phase_name="inspect",
         )
-
-        req = Inspect.Request()
-        resp = await self.inspect_client.call_async(req)
-
-        if resp is None:
-            return False, "inspect_response_none"
-
-        aborted, msg = self._check_abort_requested(goal_handle, "after_inspect_call")
-        if aborted:
-            return False, msg
-
-        if not resp.success:
-            return False, resp.message
-
-        self._update_and_publish_feedback(
-            goal_handle=goal_handle,
-            tile_index=tile_index,
-            tile_type=tile_type,
-            detail_step=self.TILE_STEP_INSPECT,
-            detail_progress=1.0,
-            state="inspect:done",
-        )
-
-        return True, resp.message
 
     # --------------------------------------------------
     # execute
