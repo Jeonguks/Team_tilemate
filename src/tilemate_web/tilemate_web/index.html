@@ -942,6 +942,26 @@
     animate();
 
     // -------------------------------------------------------
+    // 파이차트 부드러운 보간 애니메이션
+    // -------------------------------------------------------
+    let _pieTarget   = 0.0;   // Firebase에서 받은 목표값
+    let _pieCurrent  = 0.0;   // 현재 화면에 표시 중인 값
+    let _pieEl       = null;  // 현재 작업 중인 타일 엘리먼트
+    let _pieColor    = '';    // conic-gradient 색상
+
+    (function _pieLoop() {
+        requestAnimationFrame(_pieLoop);
+        if (!_pieEl) return;
+        if (Math.abs(_pieCurrent - _pieTarget) < 0.001) {
+            _pieCurrent = _pieTarget;
+        } else {
+            _pieCurrent += (_pieTarget - _pieCurrent) * 0.08; // 속도 조절 (0.05~0.15)
+        }
+        const deg = (_pieCurrent * 360).toFixed(1);
+        _pieEl.style.backgroundImage = `conic-gradient(${_pieColor} ${deg}deg, transparent 0deg)`;
+    })();
+
+    // -------------------------------------------------------
     // Firebase: robot_status 실시간 수신 (새로운 Enum 기반 로직 반영)
     // -------------------------------------------------------
     database.ref('robot_status').on('value', (snapshot) => {
@@ -1071,14 +1091,18 @@
                     tileState[workingTileId] = 'working';
                     
                     const tileProgress = data.tile_progress || 0.0;
-                    const deg = (tileProgress * 360).toFixed(1);
                     const overlayColor = isBlack ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.2)';
-                    tileEl.style.backgroundImage = `conic-gradient(${overlayColor} ${deg}deg, transparent 0deg)`;
+                    // 타일이 바뀌었으면 현재값 리셋, 목표값만 업데이트 → _pieLoop이 부드럽게 따라감
+                    if (_pieEl !== tileEl) { _pieCurrent = 0.0; }
+                    _pieEl    = tileEl;
+                    _pieColor = overlayColor;
+                    _pieTarget = tileProgress;
                 } 
                 // 2) 단차 검수(INSPECT) 단계
                 else if (tileStep === 4) {
                     tileEl.classList.remove('working');
                     tileEl.style.backgroundImage = ''; // 파이차트 지우기
+                    _pieEl = null; _pieCurrent = 0.0; _pieTarget = 0.0; // 파이 애니메이션 초기화
                     
                     const levelVal = (data.tile_level != null) ? parseFloat(data.tile_level) : 0.0;
                     if (levelVal > 0) {
@@ -1099,6 +1123,7 @@
                 else if (tileStep === 5) {
                     tileEl.classList.remove('working');
                     tileEl.style.backgroundImage = '';
+                    _pieEl = null; _pieCurrent = 0.0; _pieTarget = 0.0; // 파이 애니메이션 초기화
                     tileEl.style.color = isBlack ? '#aaffaa' : '#2e7d32';
                     tileEl.innerText = '압착 중';
                     tileState[workingTileId] = 'pressing';
@@ -1408,7 +1433,8 @@
        WebSocket 카메라 스트림
        로봇PC_IP 를 실제 IP로 수정하세요 (예: 192.168.0.10)
        ════════════════════════════════════════════════════════ */
-    const WS_URL = 'ws://127.0.0.1:8765';   // ★ 여기를 실제 IP로 변경
+    const WS_URL = 'ws://192.168.10.39:8765'; 
+    /* 중요!!!!!!!!!!!!!!!!!!!!!!!!! 로봇에서 web키면 192.168.10.39로 바꾸기*/
 
     let ws = null;
     let wsReconnectTimer = null;
