@@ -1675,7 +1675,11 @@
             const el = document.getElementById(`tile-${i}`);
             if (el) { el.classList.remove('working', 'coated', 'running', 'finished', 'result-good', 'result-rmse-bad', 'result-rmse-warn', 'result-tilt-bad', 'result-both-bad'); el.style.backgroundColor = ''; el.style.borderColor = ''; el.innerText = ''; el.style.backgroundImage = ''; }
         }
-        tiles3D.forEach(mesh => mesh.material.color.setHex(0xaaaaaa));
+        tiles3D.forEach(mesh => {
+            mesh.material.color.setHex(0xaaaaaa);
+            mesh.rotation.set(0, 0, 0);
+            mesh.position.z = 0.04;
+        });
         updateProcessStep(0); hidePatternPreview();
         database.ref('robot_status').update({
             completed_jobs: 0, current_step: 0, state: '대기',
@@ -2440,6 +2444,26 @@
             tileEl.classList.add('result-good');
             tileEl.innerText = `정상\n${rmse.toFixed(2)}mm`;
             tileState[tileId] = 'result-good';
+        }
+
+        // ── 메인 3D 뷰어 타일에 roll/pitch/yaw + RMSE 돌출 반영 ──
+        const mesh3d = tiles3D[tileId - 1];
+        if (mesh3d) {
+            const DEG = Math.PI / 180;
+            const rollRaw  = parseFloat(tile.roll_deg  || 0);
+            const pitchRaw = parseFloat(tile.pitch_deg || 0);
+            const yawRaw   = parseFloat(tile.yaw_deg   || 0);
+
+            // 회전 적용 (실제 부호 유지)
+            mesh3d.rotation.order = 'YXZ';
+            mesh3d.rotation.z = rollRaw  * DEG;
+            mesh3d.rotation.x = pitchRaw * DEG;
+            mesh3d.rotation.y = yawRaw   * DEG;
+
+            // RMSE → z축 돌출 (mm × 0.015, 최대 0.15)
+            const baseZ = 0.04;
+            const zPop  = Math.min(rmse * 0.015, 0.15);
+            mesh3d.position.z = baseZ + zPop;
         }
     }
 
