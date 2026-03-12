@@ -26,13 +26,13 @@ class DepthLocalizer:
 
         self.node.create_subscription(
             Image,
-            "/camera/camera/depth/image_rect_raw",
+            "/camera/camera/aligned_depth_to_color/image_raw",
             self.depth_callback,
             10
         )
         self.node.create_subscription(
             CameraInfo,
-            "/camera/camera/depth/camera_info",
+            "/camera/camera/aligned_depth_to_color/camera_info",
             self.camera_info_callback,
             10
         )

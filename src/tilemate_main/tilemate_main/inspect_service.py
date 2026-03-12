@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import json
 import time
+import requests
 import rclpy
 import DR_init
 
@@ -9,17 +11,20 @@ from rclpy.executors import MultiThreadedExecutor
 
 from tilemate_msgs.srv import Inspect
 from tilemate_main.robot_config import RobotConfig, GripperConfig
+from tilemate_main.wall_tile_inspection_engine import WallTileInspectionEngine
 
 
 class InspectService(Node):
 
     def __init__(self, robot_cfg: RobotConfig, gripper_cfg: GripperConfig, boot_node: Node):
-
-        super().__init__("inspect_service", namespace=RobotConfig.robot_id)
+        super().__init__("inspect_service", namespace=robot_cfg.robot_id)
 
         self._boot_node = boot_node
-        self.robot_cfg = RobotConfig
-        self.gripper_cfg = GripperConfig
+        self.robot_cfg = robot_cfg
+        self.gripper_cfg = gripper_cfg
+
+        self.declare_parameter("web_result_url", "http://127.0.0.1:8000/api/inspect/result")
+        self.web_result_url = self.get_parameter("web_result_url").value
 
         from tilemate_main.onrobot import RG
         self.gripper = RG(
@@ -27,6 +32,7 @@ class InspectService(Node):
             gripper_cfg.TOOLCHARGER_IP,
             gripper_cfg.TOOLCHARGER_PORT,
         )
+
         self.cb_group = ReentrantCallbackGroup()
 
         self.srv = self.create_service(
@@ -36,114 +42,108 @@ class InspectService(Node):
             callback_group=self.cb_group,
         )
 
-        self.initialize_robot()
+        self.inspection_engine = WallTileInspectionEngine(self)
 
+        self.initialize_robot()
         self.get_logger().info("\033[94m [5/5] [INSPECT] initialize Done!\033[0m")
 
-    # --------------------------------------------------
-    # Robot init
-    # --------------------------------------------------
     def initialize_robot(self):
-
         from DSR_ROBOT2 import (
             set_tool,
             set_tcp,
-            get_tool,
-            get_tcp,
             ROBOT_MODE_MANUAL,
             ROBOT_MODE_AUTONOMOUS,
-            get_robot_mode,
             set_robot_mode,
             wait,
         )
 
         set_robot_mode(ROBOT_MODE_MANUAL)
-        set_tool(self.robot_cfg.robot_id)
+        set_tool(self.robot_cfg.tool)
         set_tcp(self.robot_cfg.tcp)
         set_robot_mode(ROBOT_MODE_AUTONOMOUS)
 
         time.sleep(1.0)
         wait(1.0)
 
+    def move_to_inspect_pose(self):
+        from DSR_ROBOT2 import posx, movesx, mwait
 
-    # --------------------------------------------------
-    # helper
-    # --------------------------------------------------
-    def move_relative(self, dx: float, dy: float, dz: float):
-
-        from DSR_ROBOT2 import get_current_posx, movel, posx, mwait, DR_BASE
-
-        cur, _ = get_current_posx(DR_BASE)
-
-        target = [
-            cur[0] + dx,
-            cur[1] + dy,
-            cur[2] + dz,
-            cur[3],
-            cur[4],
-            cur[5],
+        candidates = [
+            posx([380.6733093261719, 177.2272491455078, 179.8480987548828, 89.89385223388672, 91.91939544677734, 92.74739837646484]),
+            posx([380.705, 157.182, 139.804, 90.000, 90.001, 89.999]),
+            posx([380.705, 127.182, 109.804, 90.000, 90.001, 89.999]),
         ]
 
-        movel(posx(target), ref=DR_BASE, vel=30, acc=30)
+        movesx(candidates, vel=80, acc=80)
         mwait()
 
-    # --------------------------------------------------
-    # Service callback
-    # --------------------------------------------------
-    def inspect_callback(self, request, response):
+    def send_result_to_web(self, payload):
+        url = self.web_result_url
 
-        del request
-
-        from DSR_ROBOT2 import get_current_posx, movel, posx, mwait, DR_BASE, posj, movej,movesx
+        if not url:
+            return False, "web_result_url is empty"
 
         try:
+            r = requests.post(url, json=payload, timeout=3)
+            r.raise_for_status()
+            return True, r.text
+        except Exception as e:
+            return False, str(e)
 
+    def inspect_callback(self, request, response):
+        del request
+
+        try:
             self.get_logger().info("[INSPECT] start inspection")
+
             self.gripper.open_gripper()
+            self.move_to_inspect_pose()
 
-            candidates = [
-                posx([380.6733093261719, 177.2272491455078, 179.8480987548828, 89.89385223388672, 91.91939544677734, 92.74739837646484]),
-                posx([380.705, 157.182, 139.804, 90.000, 90.001, 89.999]),
-                posx([380.705, 127.182, 109.804, 90.000, 90.001, 89.999]),
-            ]
-            
-            movesx(candidates, vel=80, acc=80)
-            mwait()
+            result = self.inspection_engine.analyze_once()
+            if result["success"]:
+                with open("inspect_result.json", "w") as f:
+                    json.dump(result["result_dict"], f, indent=2)
 
-            self.get_logger().info(f"{get_current_posx()}")
+            response.success = bool(result.get("success", False))
+            response.message = str(result.get("message", ""))
 
+            if response.success:
+                payload = result.get("result_dict", None)
+                self.get_logger().info(f"{payload}")
+                if payload is None:
+                    self.get_logger().warn("[INSPECT] result_dict is missing")
+                    response.message = "inspect_complete_but_result_dict_missing"
+                    return response
 
-            # dummy anomaly score
-            scores = [0.05, 0.12, 0.03]
+                ok, msg = self.send_result_to_web(payload)
 
-            response.success = True
-            response.message = "inspect_complete"
-            response.anomaly_scores = scores
+                if ok:
+                    self.get_logger().info("[INSPECT] web send success")
+                    response.message = "inspect_complete"
+                else:
+                    self.get_logger().warn(f"[INSPECT] web send failed: {msg}")
+                    response.message = f"inspect_complete_but_web_send_failed:{msg}"
 
+            self.get_logger().info(f"{response}")
             return response
 
         except Exception as e:
-
             self.get_logger().error(f"[INSPECT] failed: {e}")
-
             response.success = False
             response.message = f"exception:{e}"
-            response.anomaly_scores = []
-
             return response
 
 
 def main(args=None):
-
     rclpy.init(args=args)
     robot_cfg = RobotConfig()
     gripper_cfg = GripperConfig()
 
-    boot = rclpy.create_node("dsr_boot_inspect", namespace=RobotConfig.robot_id)
+    boot = rclpy.create_node("dsr_boot_inspect", namespace=robot_cfg.robot_id)
 
     DR_init.__dsr__node = boot
-    DR_init.__dsr__id = RobotConfig.robot_id
-    DR_init.__dsr__model = RobotConfig.robot_model
+    DR_init.__dsr__id = robot_cfg.robot_id
+    DR_init.__dsr__model = robot_cfg.robot_model
 
     import DSR_ROBOT2  # noqa
 
@@ -156,9 +156,7 @@ def main(args=None):
         ex.spin()
     except KeyboardInterrupt:
         node.get_logger().info("Interrupted by user")
-
     finally:
-
         try:
             ex.remove_node(node)
         except Exception:
