@@ -23,6 +23,7 @@ set(action_files
   "action/Spread.action"
   "action/Cowork.action"
   "action/Inspect.action"
+  "action/Press.action"
 )
 
 

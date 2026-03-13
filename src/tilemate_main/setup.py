@@ -40,6 +40,7 @@ setup(
             'test_wall_tile_inspection_3d = tilemate_main.test_wall_tile_inspection_3d:main',
             'yolo_obb_cls_node = tilemate_main.yolo_obb_cls_node:main',
             'rule_base_node = tilemate_main.rule_base_node:main',
+            'press_action_server = tilemate_main.press_action_server:main',
         ],
     },
 )

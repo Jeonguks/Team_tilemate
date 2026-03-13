@@ -14,7 +14,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from action_msgs.msg import GoalStatus
 
-from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile, Cowork, Inspect
+from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile, Cowork, Inspect, Press
 from tilemate_main.robot_config import RobotConfig
 
 
@@ -88,6 +88,9 @@ class TaskManagerNode(Node):
         self.inspect_client = ActionClient(
             self, Inspect, f"{robot_ns}/tile/inspect", callback_group=self.cb_group
         )
+        self.press_client = ActionClient(
+            self, Press, f"{robot_ns}/tile/press", callback_group=self.cb_group
+        )
 
         self._current_total_tiles = 0
         self.current_tile_index = -1
@@ -101,6 +104,7 @@ class TaskManagerNode(Node):
             TileStepDef(self.TILE_STEP_COWORK, "cowork", self._step_cowork),
             TileStepDef(self.TILE_STEP_PLACE, "place", self._step_place),
             TileStepDef(self.TILE_STEP_INSPECT, "inspect", self._step_inspect),
+            TileStepDef(self.TILE_STEP_COMPACT, "compact", self._step_compact),
         ]
 
         self.get_logger().info("\033[94m [1/5] [TASK_MANAGER] initialize Done!\033[0m")
@@ -312,7 +316,6 @@ class TaskManagerNode(Node):
             progress = float(getattr(fb, "progress", 0.0))
             state = str(getattr(fb, "state", "inspect"))
 
-            # Inspect action의 progress가 0~100이면 0~1로 정규화
             if progress > 1.0:
                 progress = progress / 100.0
 
@@ -325,6 +328,28 @@ class TaskManagerNode(Node):
                 detail_step=self.TILE_STEP_INSPECT,
                 detail_progress=progress,
                 state=f"inspect:{step}:{state}",
+            )
+        return _cb
+
+    def _make_press_feedback_cb(self, goal_handle, tile_index: int, tile_type: int):
+        def _cb(feedback_msg):
+            fb = feedback_msg.feedback
+            step = int(getattr(fb, "step", 0))
+            progress = float(getattr(fb, "progress", 0.0))
+            state = str(getattr(fb, "state", "compact"))
+
+            if progress > 1.0:
+                progress = progress / 100.0
+
+            progress = max(0.0, min(1.0, progress))
+
+            self._update_and_publish_feedback(
+                goal_handle=goal_handle,
+                tile_index=tile_index,
+                tile_type=tile_type,
+                detail_step=self.TILE_STEP_COMPACT,
+                detail_progress=progress,
+                state=f"compact:{step}:{state}",
             )
         return _cb
 
@@ -417,6 +442,13 @@ class TaskManagerNode(Node):
             total_tiles=ctx.total_tiles,
         )
 
+    async def _step_compact(self, ctx: TileRunContext):
+        return await self.call_press(
+            goal_handle=ctx.goal_handle,
+            tile_index=ctx.tile_index,
+            tile_type=ctx.tile_type,
+        )
+
     async def call_pick_tile(self, goal_handle, tile_index, tile_type):
         goal = PickTile.Goal()
         goal.tile_index = tile_index + 1
@@ -482,6 +514,33 @@ class TaskManagerNode(Node):
             feedback_callback=self._make_inspect_feedback_cb(goal_handle, tile_index, tile_type),
             goal_handle=goal_handle,
             phase_name="inspect",
+        )
+
+    async def call_press(self, goal_handle, tile_index, tile_type):
+        goal = Press.Goal()
+        goal.result_json_path = ""
+        goal.press_threshold_mm = 1.0
+        goal.approach_offset_mm = 20.0
+        goal.press_overshoot_mm = 1.0
+        goal.press_force_n = 30.0
+        goal.press_speed_mm_s = 30.0
+
+        self._update_and_publish_feedback(
+            goal_handle=goal_handle,
+            tile_index=tile_index,
+            tile_type=tile_type,
+            detail_step=self.TILE_STEP_COMPACT,
+            detail_progress=0.0,
+            state="compact:goal_send",
+        )
+
+        return await self._run_action_subtask(
+            client=self.press_client,
+            client_name="press_action",
+            goal_msg=goal,
+            feedback_callback=self._make_press_feedback_cb(goal_handle, tile_index, tile_type),
+            goal_handle=goal_handle,
+            phase_name="compact",
         )
 
     # --------------------------------------------------

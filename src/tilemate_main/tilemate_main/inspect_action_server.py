@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import copy
 import json
+import threading
 import time
 import requests
 import rclpy
@@ -24,8 +26,15 @@ class InspectActionServer(Node):
         self.robot_cfg = robot_cfg
         self.gripper_cfg = gripper_cfg
 
-        self.declare_parameter("web_result_url", "http://127.0.0.1:8000/api/inspect/result")
+        self._result_lock = threading.Lock()
+        self._last_result_payload = None
+        self._result_history = []
+
+        self.declare_parameter("web_result_url", "http://192.168.10.48:8000/api/inspect/result")
+        self.declare_parameter("local_result_path", "inspect_result.json")
+
         self.web_result_url = self.get_parameter("web_result_url").value
+        self.local_result_path = self.get_parameter("local_result_path").value
 
         from tilemate_main.onrobot import RG
         self.gripper = RG(
@@ -78,10 +87,47 @@ class InspectActionServer(Node):
             posx([380.705, 127.182, 109.804, 90.000, 90.001, 89.999]),
         ]
 
-        movesx(candidates, vel=80, acc=80)
+        movesx(candidates, time= 5.0)
         mwait()
 
-    def send_result_to_web(self, payload):
+    def _save_result_payload(self, payload: dict):
+        with self._result_lock:
+            self._last_result_payload = copy.deepcopy(payload)
+            self._result_history.append(copy.deepcopy(payload))
+
+            # 필요 이상 커지지 않게 최근 50개만 유지
+            if len(self._result_history) > 50:
+                self._result_history.pop(0)
+
+    def get_last_result_payload(self):
+        with self._result_lock:
+            if self._last_result_payload is None:
+                return None
+            return copy.deepcopy(self._last_result_payload)
+
+    def load_last_result_from_file(self):
+        path = self.local_result_path
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            self.get_logger().warn(f"[INSPECT] failed to load local result file: {e}")
+            return None
+
+    def save_result_to_local(self, payload: dict):
+        path = self.local_result_path
+        if not path:
+            return False, "local_result_path is empty"
+
+        try:
+            with self._result_lock:
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=2, ensure_ascii=False)
+            return True, path
+        except Exception as e:
+            return False, str(e)
+
+    def send_result_to_web(self, payload: dict):
         url = self.web_result_url
 
         if not url:
@@ -144,24 +190,34 @@ class InspectActionServer(Node):
                 return result
 
             self.publish_feedback(goal_handle, 3, 60.0, "analyze")
-            inspect_result = self.inspection_engine.analyze_once()
+            robot_posx = [380.705, 127.182, 109.804, 90.000, 90.001, 89.999]
+            inspect_result = self.inspection_engine.analyze_once(robot_posx=robot_posx)
 
             success = bool(inspect_result.get("success", False))
             message = str(inspect_result.get("message", ""))
 
             if success:
-                self.publish_feedback(goal_handle, 4, 80.0, "save_result")
+                self.publish_feedback(goal_handle, 4, 75.0, "save_internal_and_local")
 
                 result_dict = inspect_result.get("result_dict", None)
-                if result_dict is not None:
-                    with open("inspect_result.json", "w", encoding="utf-8") as f:
-                        json.dump(result_dict, f, indent=2, ensure_ascii=False)
-                else:
+                self.get_logger().info(f"[INSPECT] result_dict: {result_dict}")
+
+                if result_dict is None:
                     self.get_logger().warn("[INSPECT] result_dict is missing")
                     goal_handle.succeed()
                     result.success = True
                     result.message = "inspect_complete_but_result_dict_missing"
                     return result
+
+                # 1) 내부 메모리 저장
+                self._save_result_payload(result_dict)
+
+                # 2) 로컬 JSON 파일 덮어쓰기 저장
+                ok_local, local_msg = self.save_result_to_local(result_dict)
+                if ok_local:
+                    self.get_logger().info(f"[INSPECT] local save success: {local_msg}")
+                else:
+                    self.get_logger().warn(f"[INSPECT] local save failed: {local_msg}")
 
                 if goal_handle.is_cancel_requested:
                     goal_handle.canceled()
@@ -169,15 +225,22 @@ class InspectActionServer(Node):
                     result.message = "inspect_canceled_after_analysis"
                     return result
 
+                # 3) 웹 전송
                 self.publish_feedback(goal_handle, 5, 90.0, "send_result_to_web")
-                ok, web_msg = self.send_result_to_web(result_dict)
+                ok_web, web_msg = self.send_result_to_web(result_dict)
 
-                if ok:
+                if ok_web:
                     self.get_logger().info("[INSPECT] web send success")
-                    message = "inspect_complete"
+                    if ok_local:
+                        message = "inspect_complete"
+                    else:
+                        message = f"inspect_complete_but_local_save_failed:{local_msg}"
                 else:
                     self.get_logger().warn(f"[INSPECT] web send failed: {web_msg}")
-                    message = f"inspect_complete_but_web_send_failed:{web_msg}"
+                    if ok_local:
+                        message = f"inspect_complete_but_web_send_failed:{web_msg}"
+                    else:
+                        message = f"inspect_complete_but_local_save_failed:{local_msg}_and_web_send_failed:{web_msg}"
 
             self.publish_feedback(goal_handle, 6, 100.0, "done")
             goal_handle.succeed()
