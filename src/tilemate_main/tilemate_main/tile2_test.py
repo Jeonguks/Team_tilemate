@@ -54,10 +54,9 @@ def initialize_robot():
 
 
 def perform_task_once():
-    """Home -> 파지전3 -> 파지전2 -> 파지전1 -> 파지"""
     gripper = RG(GRIPPER_NAME, TOOLCHARGER_IP, TOOLCHARGER_PORT)
 
-    from DSR_ROBOT2 import posx, posj, movej, movel, mwait, amovej, wait
+    from DSR_ROBOT2 import posx, posj, movej, movel, mwait, amovej, wait, DR_MV_MOD_REL, movesx
 
     # Home
     JReady = posj([0, 0, 90, 0, 90, 0])
@@ -65,43 +64,24 @@ def perform_task_once():
     gripper.open_gripper()
     mwait()
 
-    # 파지전 위치 (Joint)
-    pre_grip = posx([423.741, -229.421, 173.196, 141.769, 179.242, 142.081])
-    movel(pre_grip, vel=VELOCITY, acc=ACC)
-    gripper.set_target_width(160)
+
+    print("건내기 위치 이동")
+    give_pose = posx([517.21, -599.12, 306.50, 88.73, -90.0, -90.0])
+    movel(give_pose, vel=150, acc=150)
+
+    condidates = [
+        posx([488.423, -163.604, 201.213, 34.747, -180.0, -101.326]),
+        posx([235.125, -344.275, 201.217, 68.472, -178.415, -112.306]),
+        posx([239.723, -354.567, 201.217, 122.919, -179.643, -57.826])
+    ]
+    movesx(condidates, time=7.5)
     mwait()
 
-    # 파지 위치 (Cartesian)
-    grip = posx([423.741, -229.421, 72.565, 141.769, 179.242, 142.081])
-    movel(grip, vel=VELOCITY, acc=ACC)
-    wait(1.0)
-    gripper.close_gripper()
-    wait(1.0)
-
-    # 파지전 위치 (Joint)
-    pre_grip = posx([423.741, -229.421, 173.196, 141.769, 179.242, 142.081])
-    movel(pre_grip, vel=VELOCITY, acc=ACC)
-    gripper.set_target_width(160)
-    mwait()
-
-    #플레이싱 전 위치 
-    pre_place = posj([-20.954, 15.683, 104.247, 80.223, 107.752, -32.848])
-    movej(pre_place,vel=VELOCITY, acc=ACC)
-    wait(10.0)
-    mwait()
-
-    # 상대좌표 이동
-    # 파지전 위치 (Joint)
-    pre_grip = posx([423.741, -229.421, 173.196, 141.769, 179.242, 142.081])
-    movel(pre_grip, vel=VELOCITY, acc=ACC)
-    gripper.set_target_width(160)
-    mwait()
-
-
-    print("[TASK] movej -> Home")
-    movej(JReady, vel=VELOCITY, acc=ACC)
-    mwait()
-
+    movel(posx([239.723, -354.567, 120.736, 122.919, -179.643, -57.826]), vel=40, acc=30)
+    # 툴 파지위치
+    # posx([239.723, -354.567, 120.736, 122.919, -179.643, -57.826])
+    # 툴 파지 상단
+    # posx([239.723, -354.567, 201.217, 122.919, -179.643, -57.826])
 
     print("[TASK] DONE")
 

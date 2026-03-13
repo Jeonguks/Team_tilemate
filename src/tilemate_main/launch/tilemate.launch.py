@@ -12,6 +12,13 @@ def generate_launch_description():
             name="pick_tile_action_server",
             output="screen",
         ),
+        #협업 노드
+        Node(
+            package="tilemate_main",
+            executable="cowork_action_server",
+            name="cowork_action_server",
+            output="screen",
+        ),
         # 타일 배치 노드
         Node(
             package="tilemate_main",
@@ -22,8 +29,8 @@ def generate_launch_description():
         # # 타일 검사 노드
         Node(
             package="tilemate_main",
-            executable="inspect_service",
-            name="inspect_service",
+            executable="inspect_action_server",
+            name="inspect_action_server",
             output="screen",
         ),
         # # 타일 압착 노드

@@ -22,11 +22,9 @@ set(action_files
   "action/PlaceTile.action"
   "action/Spread.action"
   "action/Cowork.action"
+  "action/Inspect.action"
 )
 
-set(service_files
-  "srv/Inspect.srv"
-)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${action_files}

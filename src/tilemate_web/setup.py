@@ -28,6 +28,7 @@ setup(
             'firebase=tilemate_web.firebase_bridge.firebase_bridge:main',
             'no=tilemate_web.test:main',
             'web=tilemate_web.websocket_bridge:main',
+            'server=tilemate_web.server:main',
         ],
     },
 )

@@ -8,9 +8,12 @@ ExecuteJob 액션 클라이언트 처리:
 
 import threading
 import time
+import requests
 
 from tilemate_msgs.action import ExecuteJob
 from .constants import DESIGN_PATTERNS, TILE_SYMBOL_MAP
+
+FASTAPI_BASE_URL = "http://127.0.0.1:8000"
 
 
 class ActionHandlerMixin:
@@ -187,6 +190,8 @@ class ActionHandlerMixin:
         if tile_step == 4 and self._last_tile_step_fb != 4:
             self.get_logger().info("[INSPECT] 단차 검수 시작 → inspection_result 초기화")
             self.ref.update({"inspection_result": None})
+            # FastAPI 서버에도 INSPECT 진입 알림 (SSE inspect_updated 발행)
+            threading.Thread(target=self._notify_fastapi_inspect_step, daemon=True).start()
 
         self._last_cowork_stage = current_state
         self._last_tile_step_fb = tile_step
@@ -249,16 +254,48 @@ class ActionHandlerMixin:
         except Exception as e:
             self.get_logger().error(f"[TASK_JOB] cancel result error: {e}")
     def _upload_inspection_result(self):
-        """JSON 파일을 읽어 Firebase inspection_result에 업로드."""
+        """JSON 파일을 읽어 Firebase inspection_result에 업로드 + FastAPI 서버로 POST."""
         import json
         from .constants import INSPECTION_RESULT_PATH
         try:
             with open(INSPECTION_RESULT_PATH, "r") as f:
                 data = json.load(f)
+            # Firebase 저장 (기존 유지)
             self.ref.update({"inspection_result": data})
             self.get_logger().info("[INSPECT] inspection_result 업로드 완료")
+            # FastAPI 서버로 POST → SSE inspect_updated 이벤트 발행
+            threading.Thread(
+                target=self._post_fastapi,
+                args=("/api/inspect/result", data),
+                daemon=True,
+            ).start()
         except FileNotFoundError:
             self.get_logger().warn(f"[INSPECT] 파일 없음: {INSPECTION_RESULT_PATH}")
             self.ref.update({"inspection_result": None})
         except Exception as e:
             self.get_logger().error(f"[INSPECT] 업로드 실패: {e}")
+
+    # ── FastAPI 연동 헬퍼 ────────────────────────────────
+    def _post_fastapi(self, endpoint: str, payload: dict, timeout: float = 3.0):
+        """FastAPI 서버에 POST 요청. 실패해도 ROS 동작에 영향 없음."""
+        url = f"{FASTAPI_BASE_URL}{endpoint}"
+        try:
+            r = requests.post(url, json=payload, timeout=timeout)
+            self.get_logger().info(f"[FASTAPI] POST {endpoint} → {r.status_code}")
+        except Exception as e:
+            self.get_logger().warn(f"[FASTAPI] POST {endpoint} 실패 (무시): {e}")
+
+    def _notify_fastapi_inspect_step(self):
+        """
+        tile_step=4 진입 시 FastAPI latest를 가져와 재전송.
+        실제 inspection JSON은 _upload_inspection_result 또는
+        /robot/inspection_result 토픽으로 별도 수신됨.
+        """
+        try:
+            r = requests.get(f"{FASTAPI_BASE_URL}/api/inspect/latest", timeout=3.0)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("tiles"):
+                    self._post_fastapi("/api/inspect/result", data)
+        except Exception as e:
+            self.get_logger().warn(f"[FASTAPI] inspect step 알림 실패 (무시): {e}")

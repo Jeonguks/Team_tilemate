@@ -1,292 +1,441 @@
 #!/usr/bin/env python3
 """
-test_inspection_node.py
+test.py
 ─────────────────────────────────────────────────────────────
-ROS2 토픽을 직접 퍼블리시해서
-tile_step 4 진입 시 단차 검수 모달 자동 오픈을 테스트합니다.
+FastAPI 서버 + Firebase 통합 테스트 스크립트
 
-실제 firebase_bridge 노드가 실행 중인 상태에서 사용하세요.
-(firebase_bridge가 토픽을 받아 Firebase에 반영 → 웹 모달 오픈)
+- Firebase robot_status 업데이트 → index.html 2D 그리드 / 공정 단계 반영
+- FastAPI 엔드포인트 호출 → SSE inspect_updated → 보고서 모달 반영
 
 사용법:
-    # 터미널 1: firebase_bridge 실행
-    ros2 run tilemate_web firebase_bridge
+    # 터미널 1: 서버 실행
+    cd /home/sa/Team_tilemate/src/tilemate_web/tilemate_web
+    python server.py
 
-    # 터미널 2: 이 테스트 노드 실행
-    python3 test_inspection_node.py
-
-퍼블리시하는 토픽:
-    /robot/state          (std_msgs/String)   → 로봇 상태 문자열
-    /dsr01/joint_states   는 건드리지 않음
-
-    ※ tile_step은 ExecuteJob 액션 피드백으로 전달되는 값이라
-      이 노드에서는 Firebase를 직접 update해서 tile_step을 흉내냅니다.
-      (ROS2 액션 없이 tile_step만 테스트하는 용도)
+    # 터미널 2: 이 스크립트 실행
+    python test.py
 """
 
 import json
+import math
 import os
+import random
 import sys
 import time
-import threading
 
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import String, Int32, Float32
+try:
+    import requests
+except ImportError:
+    print("[ERROR] pip install requests")
+    sys.exit(1)
 
-import firebase_admin
-from firebase_admin import credentials, db
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db as fb_db
+    _FB_AVAILABLE = True
+except ImportError:
+    _FB_AVAILABLE = False
+    print("[WARNING] firebase_admin 없음. Firebase 기능 비활성화.")
+    print("          pip install firebase-admin")
 
-# ── 경로 설정 ──────────────────────────────────────────────
+# ── 설정 ──────────────────────────────────────────────────
+BASE_URL = "http://127.0.0.1:8000"
+
 SERVICE_ACCOUNT_KEY_PATH = os.path.expanduser(
     "~/Team_tilemate/src/tilemate_web/config/co1-tiling-firebase-adminsdk-fbsvc-f4f88c3832.json"
 )
 DATABASE_URL = "https://co1-tiling-default-rtdb.asia-southeast1.firebasedatabase.app"
 
 INSPECTION_JSON_PATH = os.path.expanduser(
-    "~/Team_tilemate/src/tilemate_web/config/wall_tile_inspection_result.json"
+    "~/Team_tilemate/src/tilemate_web/config/dummy.json"
 )
 
+DESIGN_PATTERNS = {
+    1: ("B,A,B,A,B,A,B,A,B", "체커보드"),
+    2: ("B,B,B,A,A,A,B,B,B", "줄무늬"),
+    3: ("B,A,B,A,A,A,B,A,B", "데코"),
+}
+
+TILE_STEP_LABELS = {
+    0: "대기",
+    1: "타일 파지 중",
+    2: "시멘트 도포 중",
+    3: "타일 부착 중",
+    4: "단차 검수 중",
+    5: "압착 보정 중",
+    6: "타일 완료",
+}
 
 # ── Firebase 초기화 ────────────────────────────────────────
+_fb_ref = None
+
 def init_firebase():
+    global _fb_ref
+    if not _FB_AVAILABLE:
+        return False
     if not os.path.exists(SERVICE_ACCOUNT_KEY_PATH):
-        print(f"[ERROR] Firebase 키 파일 없음: {SERVICE_ACCOUNT_KEY_PATH}")
-        sys.exit(1)
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_PATH)
-        firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
-    return db.reference("/robot_status")
+        print(f"[WARNING] Firebase 키 없음: {SERVICE_ACCOUNT_KEY_PATH}")
+        return False
+    try:
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_PATH)
+            firebase_admin.initialize_app(cred, {"databaseURL": DATABASE_URL})
+        _fb_ref = fb_db.reference("/robot_status")
+        ok("Firebase 연결 완료")
+        return True
+    except Exception as e:
+        print(f"[WARNING] Firebase 초기화 실패: {e}")
+        return False
 
+def fb_update(data: dict):
+    """Firebase robot_status 업데이트. 실패해도 무시."""
+    if _fb_ref is None:
+        return
+    try:
+        _fb_ref.update(data)
+    except Exception as e:
+        print(f"  [FB] 업데이트 실패 (무시): {e}")
 
-def load_inspection_json():
-    """inspection result JSON 로드. 파일 없으면 내장 샘플 반환."""
-    if os.path.exists(INSPECTION_JSON_PATH):
-        with open(INSPECTION_JSON_PATH, "r") as f:
-            data = json.load(f)
-        print(f"  [JSON] 파일 로드: {INSPECTION_JSON_PATH}")
+def fb_reset():
+    """Firebase robot_status 초기화."""
+    if _fb_ref is None:
+        print("  Firebase 연결 없음")
+        return
+    try:
+        _fb_ref.set({
+            "current_step": 0,
+            "state": "대기",
+            "completed_jobs": 0,
+            "working_tile": 0,
+            "tile_type": 0,
+            "tile_step": 0,
+            "overall_progress": 0.0,
+            "tile_progress": 0.0,
+            "design": 0,
+            "design_ab": "",
+            "token": "",
+            "is_resume": False,
+            "joint_speed": 0.0,
+            "tile_level": 0.0,
+            "inspect_no": 0,
+            "press_no": 0,
+            "message": "",
+            "inspection_result": None,
+        })
+        ok("Firebase 초기화 완료")
+    except Exception as e:
+        print(f"  [FB] 초기화 실패: {e}")
+
+# ── 출력 헬퍼 ─────────────────────────────────────────────
+def ok(msg):   print(f"  ✅ {msg}")
+def err(msg):  print(f"  ❌ {msg}")
+def info(msg): print(f"  ℹ️  {msg}")
+
+# ── FastAPI 헬퍼 ───────────────────────────────────────────
+def check_server():
+    try:
+        r = requests.get(BASE_URL, timeout=3)
+        ok(f"서버 응답 확인 (status={r.status_code})")
+        return True
+    except Exception as e:
+        err(f"서버 연결 실패: {e}")
+        info("서버를 먼저 실행하세요: python server.py")
+        return False
+
+def get_latest():
+    try:
+        r = requests.get(f"{BASE_URL}/api/inspect/latest", timeout=5)
+        data = r.json()
+        tiles = data.get("tiles", [])
+        ts = data.get("timestamp_sec", 0)
+        ts_str = time.strftime('%H:%M:%S', time.localtime(ts)) if ts else "-"
+        info(f"최신 결과: tiles={len(tiles)}개, timestamp={ts_str}")
         return data
+    except Exception as e:
+        err(f"latest 조회 실패: {e}")
+        return None
 
-    print("  [JSON] 파일 없음 → 내장 샘플 데이터 사용")
-    return {
-        "frame_id": "test_frame",
-        "timestamp_sec": time.time(),
-        "wall": {
-            "name": "wall", "roi": [248, 87, 597, 360],
-            "sample_points": [[-0.15, -0.13, 0.392], [0.15, -0.13, 0.391], [0.0, 0.1, 0.391]],
-            "centroid": [-0.003, -0.011, 0.391],
-            "normal": [-0.0115, 0.0129, 0.9999],
-            "center_point": [-0.004, -0.010, 0.386],
-            "patch_vertices": [
-                [-0.153, -0.127, 0.391], [0.147, -0.127, 0.395],
-                [0.147,  0.104, 0.392], [-0.153,  0.104, 0.388],
+def load_dummy():
+    print("\n  ▶ dummy.json 로드 중...")
+    try:
+        r = requests.post(f"{BASE_URL}/api/inspect/dummy", timeout=5)
+        data = r.json()
+        if r.status_code == 200 and data.get("success"):
+            ok("더미 로드 완료")
+            return True
+        else:
+            err(f"더미 로드 실패: {data.get('message', r.status_code)}")
+            return False
+    except Exception as e:
+        err(f"요청 실패: {e}")
+        return False
+
+def post_result(payload: dict):
+    try:
+        r = requests.post(
+            f"{BASE_URL}/api/inspect/result",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=5,
+        )
+        data = r.json()
+        if r.status_code == 200 and data.get("success"):
+            ok("inspection result 전송 완료")
+            fb_update({"inspection_result": payload})
+            return True
+        else:
+            err(f"전송 실패: {data}")
+            return False
+    except Exception as e:
+        err(f"요청 실패: {e}")
+        return False
+
+def make_sample_payload(tile_count: int = 3) -> dict:
+    tiles = []
+    for i in range(tile_count):
+        angle_r = random.uniform(-5.0, 5.0)
+        angle_p = random.uniform(-5.0, 5.0)
+        angle_y = random.uniform(-2.0, 2.0)
+        dist_mm = random.uniform(-8.0, 8.0)
+        u = 200 + i * 120 + random.uniform(-10, 10)
+        v = 200 + random.uniform(-10, 10)
+        tiles.append({
+            "name": f"pattern_{i+1}",
+            "conf_score": round(random.uniform(0.97, 0.9999), 6),
+            "center_uv": [round(u, 2), round(v, 2)],
+            "size_uv": [96.0, 96.0],
+            "rpy_deg": [round(angle_r, 4), round(angle_p, 4), round(angle_y, 4)],
+            # UI 판정에 필수적인 변수들 추가
+            "roll_deg": round(angle_r, 4),    
+            "pitch_deg": round(angle_p, 4),   
+            "yaw_deg": round(angle_y, 4),     
+            "rmse_mm": round(random.uniform(0.5, 4.0), 2), 
+            "roi": [100, 100, 200, 200],      
+            "normal": [                       
+                round(math.sin(math.radians(angle_p)), 6),
+                round(-math.sin(math.radians(angle_r)), 6),
+                round(math.cos(math.radians(angle_r)) * math.cos(math.radians(angle_p)), 6),
             ],
-            "patch_indices": [0, 1, 2, 0, 2, 3],
-            "rmse_mm": 2.186, "roll_deg": -0.74,
-            "pitch_deg": -0.66, "yaw_deg": 0.01,
-            "color": [1.0, 0.9, 0.1],
-        },
-        "tiles": [{
-            "name": "1", "roi": [401, 233, 449, 279],
-            "sample_points": [[-0.013, 0.007, 0.382], [0.011, 0.029, 0.382]],
-            "centroid": [-0.002, 0.018, 0.381],
-            "normal": [0.0238, -0.0487, 0.9985],
-            "center_point": [-0.001, 0.019, 0.382],
-            "patch_vertices": [
-                [-0.013, 0.007, 0.381], [0.011, 0.007, 0.381],
-                [0.011, 0.030, 0.382], [-0.013, 0.030, 0.382],
+            "plane_normal": [
+                round(math.sin(math.radians(angle_p)), 6),
+                round(-math.sin(math.radians(angle_r)), 6),
+                round(math.cos(math.radians(angle_r)) * math.cos(math.radians(angle_p)), 6),
             ],
-            "patch_indices": [0, 1, 2, 0, 2, 3],
-            "rmse_mm": 1.342, "roll_deg": 2.80,
-            "pitch_deg": 1.36, "yaw_deg": 0.07,
-            "color": [0.1, 1.0, 0.2],
-        }],
+            "plane_d": round(-380.0 + dist_mm, 4),
+            "plane_centroid_mm": [
+                round(-60.0 + i * 80.0, 4),
+                round(-50.0, 4),
+                round(382.0 + dist_mm, 4),
+            ],
+        })
+
+    # Wall 데이터 추가
+    wall = {
+        "roi": [0, 0, 640, 480],
+        "rmse_mm": round(random.uniform(0.5, 1.5), 2),
+        "roll_deg": 0.1,
+        "pitch_deg": 0.1,
+        "yaw_deg": 0.0,
+        "normal": [0.0, 0.0, 1.0],
     }
 
+    return {
+        "success": True,
+        "message": "inspect_complete",
+        "frame_id": "camera_color_optical_frame",
+        "timestamp_sec": time.time(),
+        "wall": wall,     # 추가된 부분
+        "tiles": tiles,
+    }
 
-# ── 테스트 ROS2 노드 ───────────────────────────────────────
-class InspectionTestNode(Node):
-    def __init__(self, firebase_ref):
-        super().__init__("inspection_test_node")
-        self.ref = firebase_ref
+# ── 시나리오 헬퍼 ─────────────────────────────────────────
+def set_tile_step(step: int, tile_index: int = 0, design: int = 1):
+    """Firebase tile_step + 공정 단계 업데이트 → index.html 반영."""
+    pattern_str, _ = DESIGN_PATTERNS.get(design, DESIGN_PATTERNS[1])
+    label = TILE_STEP_LABELS.get(step, "작업 중")
+    fb_update({
+        "tile_step":        step,
+        "current_step":     1,
+        "state":            label,
+        "working_tile":     tile_index,
+        "design":           design,
+        "design_ab":        pattern_str,
+        "overall_progress": round(step / 6.0, 3),
+        "tile_progress":    0.0,
+    })
+    print(f"  → tile_step={step}  ({label})  tile={tile_index}  design={design}")
+    time.sleep(0.4)
 
-        # firebase_bridge가 구독하는 토픽들
-        self._pub_state = self.create_publisher(String, "/robot/state", 10)
-        self._pub_step  = self.create_publisher(Int32,  "/robot/step",  10)
+def select_design() -> int:
+    print("\n  디자인 선택:")
+    for k, (_, name) in DESIGN_PATTERNS.items():
+        print(f"    {k}) {name}")
+    try:
+        return int(input("  번호: ").strip())
+    except Exception:
+        return 1
 
-        self.get_logger().info("InspectionTestNode 시작됨")
-        self.get_logger().info("퍼블리시 토픽: /robot/state, /robot/step")
+def run_full_scenario(design: int = 1, tile_count: int = 3):
+    """
+    PICK → COWORK → PLACE → INSPECT → COMPACT 자동 시나리오.
+    각 단계에서 Firebase 업데이트 → index.html 2D 그리드 / 공정 단계 반영.
+    """
+    pattern_str, pattern_name = DESIGN_PATTERNS.get(design, DESIGN_PATTERNS[1])
+    print(f"\n[전체 시나리오] design={design} ({pattern_name}), 타일={tile_count}개")
+    print("웹 브라우저에서 http://127.0.0.1:8000 열어두세요!\n")
 
-    def pub_state(self, text: str):
-        msg = String()
-        msg.data = text
-        self._pub_state.publish(msg)
-        self.get_logger().info(f"[PUB] /robot/state → '{text}'")
+    fb_reset()
+    time.sleep(0.5)
 
-    def pub_step(self, step: int):
-        msg = Int32()
-        msg.data = step
-        self._pub_step.publish(msg)
-        self.get_logger().info(f"[PUB] /robot/step → {step}")
+    for tile_idx in range(tile_count):
+        print(f"\n  ═══ 타일 {tile_idx + 1}/{tile_count} ═══")
 
-    def set_tile_step(self, step: int, label: str, keep_working_tile: bool = False):
-        update_data = {
-            "tile_step":    step,
-            "current_step": 1,
-            "state":        label,
-        }
-        if not keep_working_tile:
-            update_data["working_tile"] = 0
-        self.ref.update(update_data)
-        self.pub_state(label)
-        print(f"  → tile_step={step}  ({label})")
-        time.sleep(0.5)  # 웹이 Firebase 업데이트를 수신할 시간 확보
+        for step in [1, 2, 3]:
+            set_tile_step(step, tile_index=tile_idx, design=design)
+            time.sleep(1.2)
 
-    def upload_inspection_result(self):
-        data = load_inspection_json()
-        self.ref.update({"inspection_result": data})
-        print("  → Firebase inspection_result 업로드 완료 ✅")
+        print(f"\n  ▶ INSPECT (tile_step=4) → 단차 검수 모달 확인!")
+        fb_update({"inspection_result": None})   # 먼저 초기화
+        set_tile_step(4, tile_index=tile_idx, design=design)
+        time.sleep(0.8)
 
-    def run_auto_scenario(self):
-        """PICK → COWORK → PLACE → INSPECT(+JSON) → 확인 → COMPACT 자동 시나리오"""
-        print("\n[자동 시나리오 시작] 웹 브라우저 준비하세요!\n")
-        time.sleep(1.5)
-
-        steps = [
-            (1, "타일 파지 중",   2.0),
-            (2, "시멘트 도포 중", 2.0),
-            (3, "타일 부착 중",   2.0),
-        ]
-        for step, label, delay in steps:
-            self.set_tile_step(step, label)
-            time.sleep(delay)
-
-        # INSPECT 진입 → working_tile=0 유지, tile_step=4 먼저 확실히 전송
-        print("\n  ▶ INSPECT 단계 진입 → 모달이 열려야 합니다!")
-        self.set_tile_step(4, "단차 검수 중")  # 내부에서 0.5초 대기
-        time.sleep(1.0)  # 웹이 tile_step=4를 확실히 수신하도록 추가 대기
-
-        print("  ▶ inspection_result 업로드 중...")
-        self.upload_inspection_result()
+        # dummy.json 로드 (없으면 랜덤 샘플로 fallback)
+        dummy_path = os.path.expanduser(INSPECTION_JSON_PATH)
+        if os.path.exists(dummy_path):
+            with open(dummy_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            payload["timestamp_sec"] = time.time()
+            info(f"dummy.json 로드 ({len(payload.get('tiles', []))}개 타일)")
+        else:
+            payload = make_sample_payload(tile_count=1)
+            payload["tiles"][0]["name"] = f"tile_{tile_idx + 1}"
+            info("dummy.json 없음 → 랜덤 샘플 사용")
+        post_result(payload)
         time.sleep(0.5)
 
-        print("\n  웹에서 3D 검수 모달을 확인하세요.")
-        print("  모달 확인 후 엔터를 누르면 COMPACT(5)로 진행합니다...")
-        input()
+        input(f"\n  타일 {tile_idx + 1} 검수 확인 후 엔터...")
 
-        # COMPACT 진입: working_tile 유지 필수
-        print("\n  ▶ COMPACT 단계 진입 → 모달 닫히고 판정 결과가 표시되어야 합니다!")
-        self.set_tile_step(5, "압착 보정 중", keep_working_tile=True)
+        set_tile_step(5, tile_index=tile_idx, design=design)
         time.sleep(1.0)
-        print("  ✅ 시나리오 완료")
+
+        set_tile_step(6, tile_index=tile_idx, design=design)
+        fb_update({
+            "completed_jobs": tile_idx + 1,
+            "tile_step": 0,
+        })
+        time.sleep(0.5)
+
+    print(f"\n  ✅ 전체 시나리오 완료 ({tile_count}개 타일)")
+    fb_update({"state": "작업 완료", "overall_progress": 1.0})
+
+# ── 메인 메뉴 ─────────────────────────────────────────────
+MENU = """
+─── 테스트 메뉴 ───────────────────────────────────────────
+  [FastAPI - 단차 보고서 모달]
+  1) dummy.json 로드              (POST /api/inspect/dummy)
+  2) 랜덤 3타일 샘플 전송         (POST /api/inspect/result)
+  3) config/dummy.json 직접 전송  (POST /api/inspect/result)
+  4) 최신 결과 확인               (GET  /api/inspect/latest)
+
+  [Firebase - index.html 2D 그리드 / 공정 단계]
+  f1) tile_step 수동 설정  (파지/시멘트/부착/검수/압착)
+  f2) 디자인 패턴 설정     (흰색/검정 2D 그리드)
+  f3) Firebase 초기화
+
+  [시나리오]
+  a)  자동 전체 시나리오  (PICK→COWORK→PLACE→INSPECT→COMPACT)
+
+  q)  종료
+───────────────────────────────────────────────────────────"""
 
 
-# ── 메뉴 루프 (별도 스레드) ────────────────────────────────
-def menu_loop(node: InspectionTestNode):
-    time.sleep(0.5)  # 노드 초기화 대기
+def main():
+    # main() 시작부에 추가
+    has_firebase = init_firebase()
+    if not has_firebase:
+        print("[ERROR] Firebase 연결 필수! 키 파일 경로 확인:")
+        print(f"  {SERVICE_ACCOUNT_KEY_PATH}")
+        sys.exit(1)  # Firebase 없으면 아예 종료
+    print("\n" + "=" * 57)
+    print("  단차 검수 통합 테스트 스크립트")
+    print(f"  서버: {BASE_URL}")
+    print("=" * 57)
 
-    print("\n" + "=" * 55)
-    print("  단차 검수 모달 ROS2 테스트 노드")
-    print("  웹 브라우저에서 index.html을 열어두세요!")
-    print("=" * 55)
+    has_firebase = init_firebase()
+    if not has_firebase:
+        print("  ⚠️  Firebase 없이 FastAPI 기능만 사용 가능합니다.")
 
-    # 초기 상태 세팅
-    node.ref.update({
-        "current_step": 1,
-        "tile_step":    0,
-        "state":        "대기",
-        "completed_jobs": 0,
-        "working_tile": 0,
-        "overall_progress": 0.0,
-        "tile_progress":    0.0,
-        "inspection_result": None,
-        "design": 1,
-    })
-    print("[RESET] Firebase 초기화 완료\n")
-
-    MENU = """
-─── 테스트 메뉴 ───────────────────────────────
-  1) PICK    (tile_step=1)
-  2) COWORK  (tile_step=2)
-  3) PLACE   (tile_step=3)
-  4) INSPECT (tile_step=4)  ← 모달 오픈
-  5) COMPACT (tile_step=5)  ← 모달 닫힘
-  6) DONE    (tile_step=6)
-  j) inspection_result JSON 업로드
-  a) 전체 자동 시나리오 (1→2→3→4+JSON→5)
-  r) 초기화
-  q) 종료
-───────────────────────────────────────────────"""
-
-    STEP_LABELS = {
-        1: "타일 파지 중",
-        2: "시멘트 도포 중",
-        3: "타일 부착 중",
-        4: "단차 검수 중",
-        5: "압착 보정 중",
-        6: "타일 완료",
-    }
+    if not check_server():
+        sys.exit(1)
 
     while True:
         print(MENU)
         choice = input("선택: ").strip().lower()
 
-        if choice in "123456" and choice.isdigit():
-            step = int(choice)
-            # COMPACT(5)는 INSPECT 직후이므로 working_tile 유지
-            keep = (step == 5)
-            node.set_tile_step(step, STEP_LABELS[step], keep_working_tile=keep)
-            # INSPECT 진입 시 JSON도 같이 업로드할지 확인
-            if step == 4:
-                ans = input("  JSON도 업로드할까요? (엔터=예 / n=아니오): ").strip().lower()
-                if ans != "n":
-                    node.upload_inspection_result()
+        if choice == "1":
+            load_dummy()
+            time.sleep(0.3)
+            get_latest()
 
-        elif choice == "j":
-            node.upload_inspection_result()
+        elif choice == "2":
+            payload = make_sample_payload(tile_count=3)
+            info("샘플 타일 3개 생성")
+            post_result(payload)
+            time.sleep(0.3)
+            get_latest()
+
+        elif choice == "3":
+            path = os.path.expanduser(INSPECTION_JSON_PATH)
+            if not os.path.exists(path):
+                err(f"파일 없음: {path}")
+            else:
+                with open(path, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+                post_result(payload)
+                time.sleep(0.3)
+                get_latest()
+
+        elif choice == "4":
+            get_latest()
+
+        elif choice == "f1":
+            print("  0=대기 1=파지 2=시멘트 3=부착 4=검수 5=압착 6=완료")
+            try:
+                step   = int(input("  step 번호: ").strip())
+                tile   = int(input("  tile_index (0~8, 기본 0): ").strip() or "0")
+                design = select_design()
+                set_tile_step(step, tile_index=tile, design=design)
+                if step == 4:
+                    ans = input("  inspection result도 전송할까요? (엔터=예/n=아니오): ").strip().lower()
+                    if ans != "n":
+                        payload = make_sample_payload(tile_count=2)
+                        post_result(payload)
+            except ValueError:
+                err("숫자를 입력하세요.")
+
+        elif choice == "f2":
+            design = select_design()
+            pattern_str, name = DESIGN_PATTERNS.get(design, DESIGN_PATTERNS[1])
+            fb_update({"design": design, "design_ab": pattern_str})
+            ok(f"디자인 설정: {design} ({name}) → {pattern_str}")
+
+        elif choice == "f3":
+            fb_reset()
 
         elif choice == "a":
-            node.run_auto_scenario()
-
-        elif choice == "r":
-            node.ref.update({
-                "tile_step": 0, "current_step": 1,
-                "state": "대기", "inspection_result": None,
-            })
-            print("  → 초기화 완료")
+            design = select_design()
+            try:
+                count = int(input("  타일 개수 (기본 3): ").strip() or "3")
+            except ValueError:
+                count = 3
+            run_full_scenario(design=design, tile_count=count)
 
         elif choice == "q":
             print("\n[종료]")
-            rclpy.shutdown()
             break
 
         else:
             print("  잘못된 입력입니다.")
-
-
-# ── 엔트리포인트 ───────────────────────────────────────────
-def main():
-    rclpy.init()
-
-    firebase_ref = init_firebase()
-    print("[OK] Firebase 연결 완료")
-
-    node = InspectionTestNode(firebase_ref)
-
-    # 메뉴는 별도 스레드에서 실행 (rclpy.spin이 메인 스레드 점유)
-    menu_thread = threading.Thread(target=menu_loop, args=(node,), daemon=True)
-    menu_thread.start()
-
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        print("\n[Ctrl+C] 종료")
-    finally:
-        node.destroy_node()
-        try:
-            rclpy.shutdown()
-        except Exception:
-            pass
 
 
 if __name__ == "__main__":
