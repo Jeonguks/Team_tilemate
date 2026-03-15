@@ -46,6 +46,7 @@ class TaskManagerNode(Node):
     TILE_STEP_INSPECT = 4
     TILE_STEP_COMPACT = 5
     TILE_STEP_DONE = 6
+    DEMO_TILE_LIMIT = 2
 
     def __init__(self):
         super().__init__("task_manager_node")
@@ -703,8 +704,16 @@ class TaskManagerNode(Node):
 
         try:
             layout = list(req.design_layout)
-            total_tiles = len(layout)
+            requested_total_tiles = len(layout)
+
+            # Demo mode: 최대 타일 개수 제한 (요청이 더 커도 앞쪽 타일만 수행)
+            total_tiles = min(requested_total_tiles, self.DEMO_TILE_LIMIT)
             self._current_total_tiles = total_tiles
+
+            if requested_total_tiles > total_tiles:
+                self.get_logger().warn(
+                    f"[TASK] demo tile limit active: requested={requested_total_tiles}, run={total_tiles}"
+                )
 
             start_tile_index = int(req.current_tile_index) if req.is_resume else 0
             start_step = int(req.current_step) if req.is_resume else self.TILE_STEP_IDLE

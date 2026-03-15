@@ -15,6 +15,7 @@ from tilemate_msgs.action import ExecuteJob
 from .constants import DESIGN_PATTERNS, TILE_SYMBOL_MAP
 
 FASTAPI_BASE_URL = os.getenv("TILEMATE_FASTAPI_BASE_URL", "http://127.0.0.1:8000")
+DEMO_TILE_LIMIT = 2
 
 
 class ActionHandlerMixin:
@@ -74,11 +75,23 @@ class ActionHandlerMixin:
 
         pattern_str, design_id = self._resolve_design_pattern(cmd_dict)
         layout = self._pattern_to_layout(pattern_str)
+        if len(layout) > DEMO_TILE_LIMIT:
+            self.get_logger().warn(
+                f"[TASK_JOB] demo tile limit active: requested={len(layout)}, run={DEMO_TILE_LIMIT}"
+            )
+            layout = layout[:DEMO_TILE_LIMIT]
 
         token             = str(cmd_dict.get("token", f"job_{int(time.time() * 1000)}"))
         completed_jobs    = int(cmd_dict.get("completed_jobs", 0))
         current_step      = int(cmd_dict.get("current_step", 0))
         current_tile_idx  = int(cmd_dict.get("current_tile_index", completed_jobs))
+
+        max_tile_count = len(layout)
+        completed_jobs = max(0, min(completed_jobs, max_tile_count))
+        if max_tile_count <= 0:
+            current_tile_idx = 0
+        else:
+            current_tile_idx = max(0, min(current_tile_idx, max_tile_count - 1))
 
         goal = ExecuteJob.Goal()
         goal.token             = token
