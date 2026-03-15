@@ -61,7 +61,7 @@ class HybridAnomalibNode(Node):
         # ==========================================
         # 🔥 2. 프레임 누적(버퍼) 트래킹 변수 세팅
         # ==========================================
-        self.TARGET_FRAMES = 1     
+        self.TARGET_FRAMES = 30     
         self.current_frame_count = 0     
         self.tracked_tiles = []          
         self.MATCH_DIST_THRESHOLD = 50.0 
@@ -187,9 +187,9 @@ class HybridAnomalibNode(Node):
             res_msg.pose = tt['pose']      
             res_msg.width = tt['width']    
             res_msg.height = tt['height']  
-            res_msg.is_defective = final_is_defect
-            res_msg.defect_type = "DL_Crack" if final_is_defect else "None"
 
+
+            res_msg.anomaly_score = float(avg_score)
             result_array_msg.results.append(res_msg)
 
             status = "🚨 최종 폐기" if final_is_defect else "✅ 최종 정상"
