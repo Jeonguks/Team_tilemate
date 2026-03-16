@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import copy
 import json
+import os
 import threading
 import requests
 import time
@@ -33,7 +34,11 @@ class InspectActionServer(Node):
         self._last_result_payload = None
         self._result_history = []
 
-        self.declare_parameter("web_result_url", "http://192.168.10.48:8000/api/inspect/result")
+        default_web_result_url = os.getenv(
+            "TILEMATE_WEB_RESULT_URL",
+            "http://127.0.0.1:8000/api/inspect/result",
+        )
+        self.declare_parameter("web_result_url", default_web_result_url)
         self.declare_parameter("local_result_path", "inspect_result.json")
 
         self.web_result_url = self.get_parameter("web_result_url").value

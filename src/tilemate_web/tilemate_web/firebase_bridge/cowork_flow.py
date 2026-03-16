@@ -21,25 +21,32 @@ def _wait_for_keyword(stt, keywords: list, log_prefix: str, firebase_ref, logger
     STT가 None이면 5초 대기 후 자동 진행.
     Firebase robot_status/manual_confirm 이 True 이면 버튼 확인으로 즉시 진행.
     """
-    if stt is None:
-        logger.warn(f"[{log_prefix}] STT 없음. 5초 후 자동 진행합니다.")
-        time.sleep(5.0)
-        return True
-
-    # 수동 확인 플래그 초기화
-    firebase_ref.update({"manual_confirm": False})
+    # 수동 확인/입력 모드 초기화
+    firebase_ref.update({"manual_confirm": False, "stt_mode": "choose", "stt_mic_state": ""})
 
     first_attempt = True
     while True:
         # 버튼 수동 확인 체크
         try:
             snap = firebase_ref.get()
-            if snap and snap.get("manual_confirm") is True:
-                firebase_ref.update({"manual_confirm": False, "stt_mic_state": ""})
+            mode = str((snap or {}).get("stt_mode", "choose")).strip().lower()
+
+            if snap and (snap.get("manual_confirm") is True or mode == "button"):
+                firebase_ref.update({"manual_confirm": False, "stt_mic_state": "", "stt_mode": ""})
                 logger.info(f"[{log_prefix}] 수동 확인 버튼 → 진행")
                 return True
+
+            if mode != "voice":
+                time.sleep(0.2)
+                continue
         except Exception as e:
             logger.warn(f"[{log_prefix}] manual_confirm 체크 오류 (무시): {e}")
+
+        if stt is None:
+            logger.warn(f"[{log_prefix}] STT 없음. 5초 후 자동 진행합니다.")
+            time.sleep(5.0)
+            firebase_ref.update({"stt_mic_state": "", "stt_mode": ""})
+            return True
 
         try:
             logger.info(f"[{log_prefix}] 🎙 음성 대기 중...")
@@ -50,7 +57,7 @@ def _wait_for_keyword(stt, keywords: list, log_prefix: str, firebase_ref, logger
             logger.info(f"[{log_prefix}] STT 결과: '{text}'")
 
             if any(kw in text for kw in keywords):
-                firebase_ref.update({"stt_mic_state": ""})
+                firebase_ref.update({"stt_mic_state": "", "stt_mode": ""})
                 return True
             else:
                 logger.info(f"[{log_prefix}] 키워드 미감지. 재청취...")
@@ -81,6 +88,7 @@ class CoworkFlowMixin:
             self.ref.update({
                 "state": "타일 파지 대기 중 - 타일을 잡으면 '타일 잡았어' 라고 말해주세요",
                 "cement_state": "waiting_pick",
+                "stt_mode": "choose",
             })
             self.get_logger().info("[CEMENT] 1단계: 타일 파지 대기")
 
@@ -115,6 +123,7 @@ class CoworkFlowMixin:
                 "state": "시멘트 도포 대기 중 - 다 바르면 '시멘트 다 발랐어' 라고 말해주세요",
                 "cement_state": "waiting_cement",
                 "stt_mic_state": "",
+                "stt_mode": "choose",
             })
             self.get_logger().info("[CEMENT] 2단계: 시멘트 도포 대기")
 
@@ -138,6 +147,7 @@ class CoworkFlowMixin:
                 "state": "시멘트 완료 - 작업 재개",
                 "cement_state": "done",
                 "stt_mic_state": "",
+                "stt_mode": "",
             })
             self.get_logger().info("[CEMENT] 재개 완료")
 

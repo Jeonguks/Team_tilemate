@@ -26,6 +26,7 @@ INITIAL_ROBOT_STATUS = {
     "design_ab": "",
     "token": "",
     "is_resume": False,
+    "stt_mode": "",
     "joint_speed": 0.0,
     "tile_level": 0.0,
     "inspect_no": 0,

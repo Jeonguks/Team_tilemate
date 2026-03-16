@@ -187,6 +187,9 @@ class ActionHandlerMixin:
         tile_step    = int(fb.detail_step)   # detail_step → tile_step 매핑
         overall_step = int(fb.overall_step)
 
+        # 데모 모드 안전장치: 인덱스/완료개수 상한 고정
+        tile_index = max(0, min(tile_index, DEMO_TILE_LIMIT - 1))
+
         print(
             f"\n[FB] ─────────────────────────────────────\n"
             f"  overall_step   : {overall_step}\n"
@@ -200,11 +203,13 @@ class ActionHandlerMixin:
             flush=True,
         )
 
-        # 타일 완료 개수 추정 (tile_step == 5 = TILE_STEP_DONE)
+        # 타일 완료 개수 추정 (tile_step == 6 = TILE_STEP_DONE)
         completed_jobs = self._last_completed_jobs_fb
-        if tile_step == 5 and self._last_tile_step_fb != 5:
+        if tile_step == 6 and self._last_tile_step_fb != 6:
             completed_jobs = max(completed_jobs, tile_index + 1)
             self._last_completed_jobs_fb = completed_jobs
+
+        completed_jobs = max(0, min(completed_jobs, DEMO_TILE_LIMIT))
 
         current_state = str(fb.state)
         self._handle_cowork_state(current_state)

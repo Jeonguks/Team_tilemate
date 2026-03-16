@@ -48,9 +48,12 @@ function safeSizeFromPlane(obj) {
 }
 
   function safeCentroidM(obj) {
+    if (Array.isArray(obj?.plane_centroid_mm)) return obj.plane_centroid_mm.map(v => Number(v) / 1000.0);
+    if (obj?.name !== 'wall' && Array.isArray(obj?.base_center_mm)) {
+      return obj.base_center_mm.map(v => Number(v) / 1000.0);
+    }
     if (Array.isArray(obj?.centroid_m)) return obj.centroid_m.map(Number);
     if (Array.isArray(obj?.center_point_m)) return obj.center_point_m.map(Number);
-    if (Array.isArray(obj?.plane_centroid_mm)) return obj.plane_centroid_mm.map(v => Number(v) / 1000.0);
     return [0, 0, 0];
   }
   function getTileRealSizeFromWall() {

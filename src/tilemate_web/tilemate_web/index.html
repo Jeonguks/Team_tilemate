@@ -325,42 +325,6 @@
             padding: 18px;
             font-family: Inter, Pretendard, system-ui, sans-serif;
         }
-        /* report_page styles (scoped to #report-modal-body) */
-        #report-modal-body .rp-wrap { max-width: 1440px; margin: 0 auto; }
-        #report-modal-body .rp-titlebar { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:16px; }
-        #report-modal-body .rp-title h1 { margin:0 0 6px 0; font-size:28px; font-weight:800; color:#e9eefc; }
-        #report-modal-body .rp-title p { margin:0; font-size:14px; color:#9fb0d1; }
-        #report-modal-body .rp-titleActions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-        #report-modal-body .rp-panel { background:#121a2f; border:1px solid #2d3b63; border-radius:18px; }
-        #report-modal-body .rp-controls { display:grid; grid-template-columns:1fr auto auto auto auto auto; gap:10px; padding:14px; align-items:center; margin-bottom:16px; }
-        #report-modal-body .rp-controls input { background:#0f1730; border:1px solid #2d3b63; border-radius:10px; padding:10px 14px; color:#e9eefc; font-size:14px; }
-        #report-modal-body .rp-controls button { padding:10px 16px; border-radius:10px; border:none; cursor:pointer; font-size:13px; font-weight:700; background:#1d4ed8; color:#fff; white-space:nowrap; }
-        #report-modal-body .rp-controls button.rp-secondary { background:#223050; border:1px solid #2d3b63; }
-        #report-modal-body .rp-summary { padding:14px; margin-bottom:16px; display:grid; grid-template-columns:repeat(6,1fr); gap:12px; }
-        #report-modal-body .rp-metric { background:#0f1730; border:1px solid #2d3b63; border-radius:16px; padding:14px; }
-        #report-modal-body .rp-metric .k { color:#9fb0d1; font-size:12px; margin-bottom:8px; }
-        #report-modal-body .rp-metric .v { font-size:24px; font-weight:800; color:#e9eefc; }
-        #report-modal-body .rp-grid { display:grid; grid-template-columns:1.15fr 1fr; gap:16px; align-items:start; }
-        #report-modal-body .rp-section { padding:14px; }
-        #report-modal-body .rp-section h2 { margin:0 0 12px; font-size:18px; color:#e9eefc; }
-        #report-modal-body .rp-subdesc { color:#9fb0d1; font-size:13px; margin-bottom:12px; }
-        #report-modal-body .rp-canvasWrap { position:relative; min-height:460px; }
-        #report-modal-body canvas#rpMapCanvas { width:100%; height:460px; background:radial-gradient(circle at 50% 50%, #14203d 0%, #0d1428 100%); border:1px solid #2d3b63; border-radius:16px; display:block; }
-        #report-modal-body .rp-legend { display:flex; gap:8px; align-items:center; margin-top:10px; color:#9fb0d1; font-size:12px; flex-wrap:wrap; }
-        #report-modal-body .rp-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:#0f1730; border:1px solid #2d3b63; }
-        #report-modal-body .rp-dot { width:10px; height:10px; border-radius:999px; display:inline-block; }
-        #report-modal-body .rp-tableWrap { overflow:auto; max-height:520px; border:1px solid rgba(45,59,99,0.45); border-radius:16px; }
-        #report-modal-body table { width:100%; border-collapse:collapse; font-size:14px; }
-        #report-modal-body thead th { position:sticky; top:0; background:#121a2f; z-index:1; color:#9fb0d1; text-align:left; font-weight:700; border-bottom:1px solid #2d3b63; padding:11px 10px; }
-        #report-modal-body tbody td { padding:11px 10px; border-bottom:1px solid rgba(45,59,99,0.55); vertical-align:middle; color:#e9eefc; }
-        #report-modal-body tbody tr:hover { background:rgba(96,165,250,0.06); }
-        #report-modal-body .rp-badge { display:inline-block; padding:5px 9px; border-radius:999px; font-size:12px; font-weight:800; }
-        #report-modal-body .rp-good { color:#bbf7d0; background:rgba(34,197,94,0.16); border:1px solid rgba(34,197,94,0.36); }
-        #report-modal-body .rp-warn { color:#fde68a; background:rgba(245,158,11,0.16); border:1px solid rgba(245,158,11,0.36); }
-        #report-modal-body .rp-bad  { color:#fecaca; background:rgba(239,68,68,0.16); border:1px solid rgba(239,68,68,0.36); }
-        #report-modal-body .rp-emptyHint { padding:28px 16px; color:#9fb0d1; text-align:center; border:1px dashed rgba(159,176,209,0.25); border-radius:14px; background:rgba(11,16,32,0.3); }
-        #report-modal-body .rp-statusline { margin-top:12px; color:#9fb0d1; font-size:12px; text-align:right; }
-        #report-modal-body .rp-mono { font-family:ui-monospace,monospace; }
 
         /* ── role-switcher 보고서 버튼 ── */
         #btn-report {
@@ -393,8 +357,12 @@
                 <div class="cement-emoji">🤲</div>
                 <h2>타일을 잡아주세요</h2>
                 <p>타일을 잡고 시멘트를 발라주세요.</p>
-                <p>타일을 잡으면 아래와 같이 말해주세요.</p>
-                <div class="cement-hint">"타일 잡았어"</div>
+                <p>진행 방식을 먼저 선택해주세요.</p>
+                <div id="cement-mode-pick" style="margin-top:12px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                    <button onclick="chooseCementInputMode('pick','voice')" style="padding:12px 18px; font-size:1.0em; font-weight:bold; background:#1a237e; color:white; border:none; border-radius:10px; cursor:pointer; box-shadow:0 2px 8px rgba(26,35,126,0.28); flex:unset;">🎙️ 음성으로 진행</button>
+                    <button onclick="chooseCementInputMode('pick','button')" style="padding:12px 18px; font-size:1.0em; font-weight:bold; background:#2e7d32; color:white; border:none; border-radius:10px; cursor:pointer; box-shadow:0 2px 8px rgba(46,125,50,0.28); flex:unset;">✅ 버튼으로 바로 진행</button>
+                </div>
+                <div class="cement-hint">음성 선택 시: "타일 잡았어"</div>
                 <!-- STT 상태 표시 -->
                 <div id="cement-stt-pick" style="margin-top:20px;">
                     <div id="cement-stt-pick-idle" class="cement-stt-state" style="display:flex;">
@@ -431,15 +399,6 @@
                         <div class="cement-stt-label" style="color:#888;">인식 못했어요. 다시 말해주세요</div>
                     </div>
                 </div>
-                <button onclick="sendManualConfirm()" style="
-                    margin-top: 20px; padding: 16px 40px;
-                    font-size: 1.2em; font-weight: bold;
-                    background: #2e7d32; color: white;
-                    border: none; border-radius: 12px; cursor: pointer;
-                    box-shadow: 0 4px 12px rgba(46,125,50,0.3);
-                    transition: background 0.2s;">
-                    ✅ 네, 타일 잡았어요
-                </button>
             </div>
 
             <!-- 2단계: 시멘트 도포 대기 -->
@@ -447,8 +406,12 @@
                 <div class="cement-emoji">🧱</div>
                 <h2>시멘트를 발라주세요</h2>
                 <p>타일에 시멘트를 다 바른 후</p>
-                <p>아래와 같이 말해주세요.</p>
-                <div class="cement-hint">"시멘트 다 발랐어"</div>
+                <p>진행 방식을 먼저 선택해주세요.</p>
+                <div id="cement-mode-cement" style="margin-top:12px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                    <button onclick="chooseCementInputMode('cement','voice')" style="padding:12px 18px; font-size:1.0em; font-weight:bold; background:#1a237e; color:white; border:none; border-radius:10px; cursor:pointer; box-shadow:0 2px 8px rgba(26,35,126,0.28); flex:unset;">🎙️ 음성으로 진행</button>
+                    <button onclick="chooseCementInputMode('cement','button')" style="padding:12px 18px; font-size:1.0em; font-weight:bold; background:#2e7d32; color:white; border:none; border-radius:10px; cursor:pointer; box-shadow:0 2px 8px rgba(46,125,50,0.28); flex:unset;">✅ 버튼으로 바로 진행</button>
+                </div>
+                <div class="cement-hint">음성 선택 시: "시멘트 다 발랐어"</div>
                 <!-- STT 상태 표시 -->
                 <div id="cement-stt-cement" style="margin-top:20px;">
                     <div id="cement-stt-cement-idle" class="cement-stt-state" style="display:flex;">
@@ -485,15 +448,6 @@
                         <div class="cement-stt-label" style="color:#888;">인식 못했어요. 다시 말해주세요</div>
                     </div>
                 </div>
-                <button onclick="sendManualConfirm()" style="
-                    margin-top: 20px; padding: 16px 40px;
-                    font-size: 1.2em; font-weight: bold;
-                    background: #1a237e; color: white;
-                    border: none; border-radius: 12px; cursor: pointer;
-                    box-shadow: 0 4px 12px rgba(26,35,126,0.3);
-                    transition: background 0.2s;">
-                    ✅ 네, 시멘트 다 발랐어요
-                </button>
             </div>
 
         </div>
@@ -1167,75 +1121,13 @@
             </div>
             <button onclick="closeReportModal()" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;border-radius:10px;padding:7px 16px;font-size:0.88em;font-weight:700;cursor:pointer;flex:unset;">✕ 닫기</button>
         </div>
-        <div id="report-modal-body">
-            <div class="rp-wrap">
-                <div class="rp-titlebar">
-                    <div class="rp-title">
-                        <h1>타일 단차 보고서</h1>
-                        <p>inspection payload의 타일 중심점과 wall plane 정보를 이용해 벽 기준 단차, 기울기, 타일 상태를 요약합니다.</p>
-                    </div>
-                    <div class="rp-titleActions">
-                        <button id="rp-open3dBtn" class="rp-secondary" style="padding:10px 16px;border-radius:10px;border:1px solid #2d3b63;background:#223050;color:#e9eefc;font-size:13px;font-weight:700;cursor:pointer;">3D 상세 보기</button>
-                    </div>
-                </div>
-
-                <div class="rp-panel rp-controls">
-                    <input id="rp-urlInput" type="text" value="/api/inspect/latest" />
-                    <input id="rp-warnMm" type="number" step="0.1" value="3.0" title="주의 기준 mm" style="width:80px;" />
-                    <input id="rp-badMm" type="number" step="0.1" value="6.0" title="불량 기준 mm" style="width:80px;" />
-                    <button id="rp-fetchBtn">새로고침</button>
-                    <button id="rp-loadDummyBtn" class="rp-secondary">더미 적재</button>
-                    <button id="rp-force3dBtn" class="rp-secondary">현재 데이터로 3D</button>
-                </div>
-
-                <div class="rp-panel rp-summary">
-                    <div class="rp-metric"><div class="k">타일 수</div><div class="v" id="rp-mTiles">0</div></div>
-                    <div class="rp-metric"><div class="k">기준면</div><div class="v" id="rp-mBase" style="font-size:16px;">-</div></div>
-                    <div class="rp-metric"><div class="k">최대 |벽 기준 거리| (mm)</div><div class="v" id="rp-mMaxDz">-</div></div>
-                    <div class="rp-metric"><div class="k">평균 기울기 (°)</div><div class="v" id="rp-mAvgTilt">-</div></div>
-                    <div class="rp-metric"><div class="k">불량 개수</div><div class="v" id="rp-mBad">0</div></div>
-                    <div class="rp-metric"><div class="k">갱신 시각</div><div class="v" id="rp-mTime" style="font-size:16px;">-</div></div>
-                </div>
-
-                <div class="rp-grid">
-                    <div>
-                        <div class="rp-panel rp-section">
-                            <h2>배치도 + 벽 기준 단차 색상</h2>
-                            <div class="rp-subdesc">원 크기는 |벽 기준 거리|, 색상은 정상/주의/불량을 나타냅니다.</div>
-                            <div class="rp-canvasWrap">
-                                <canvas id="rpMapCanvas" width="960" height="460"></canvas>
-                            </div>
-                            <div class="rp-legend">
-                                <span class="rp-chip"><span class="rp-dot" style="background:#22c55e"></span> 정상</span>
-                                <span class="rp-chip"><span class="rp-dot" style="background:#f59e0b"></span> 주의</span>
-                                <span class="rp-chip"><span class="rp-dot" style="background:#ef4444"></span> 불량</span>
-                                <span class="rp-chip">원 크기 = |벽 기준 거리|</span>
-                                <span class="rp-chip">텍스트 = 이름 / 단차 / Tilt</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="rp-panel rp-section">
-                            <h2>타일별 검사 결과</h2>
-                            <div class="rp-subdesc">단차가 큰 순서대로 정렬합니다.</div>
-                            <div class="rp-tableWrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>타일</th><th>Conf</th><th>Center UV</th>
-                                            <th>Z</th><th>Wall Dist</th><th>Tilt</th><th>RPY</th><th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="rp-tileTableBody">
-                                        <tr><td colspan="8"><div class="rp-emptyHint">타일 데이터가 없습니다.</div></td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="rp-statusline" id="rp-statusLine">ready</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div id="report-modal-body" style="padding:0; overflow:hidden;">
+            <iframe
+                id="report-frame"
+                src="/report"
+                title="타일 단차 보고서"
+                style="width:100%; height:100%; border:none; background:#0b1020;"
+            ></iframe>
         </div>
     </div>
 </div>
@@ -1467,13 +1359,13 @@
             phasePick.style.display   = 'block';
             phaseCement.style.display = 'none';
             cementModal.classList.add('show');
-            updateCementSttUI('pick', data.stt_mic_state || '');
+            updateCementSttUI('pick', data.stt_mic_state || '', data.stt_mode || 'choose');
         } else if (cs === 'waiting_cement') {
             // 2단계: 시멘트 발라주세요
             phasePick.style.display   = 'none';
             phaseCement.style.display = 'block';
             cementModal.classList.add('show');
-            updateCementSttUI('cement', data.stt_mic_state || '');
+            updateCementSttUI('cement', data.stt_mic_state || '', data.stt_mode || 'choose');
         } else {
             cementModal.classList.remove('show');
         }
@@ -1521,7 +1413,33 @@
         const tileStep    = data.tile_step || 0;    // 0: IDLE, 1: PICK, 2: COWORK, 3: PLACE, 4: INSPECT, 5: COMPACT, 6: DONE
         if (data.design !== undefined && data.design !== null) currentDesign = parseInt(data.design);
         const currentJobs = data.completed_jobs || 0;
-        const workingTileId = (data.working_tile !== undefined) ? parseInt(data.working_tile) + 1 : currentJobs + 1;
+        let workingTileId;
+        if (data.working_tile !== undefined && data.working_tile !== null && data.working_tile !== '') {
+            const rawWorking = Number(data.working_tile);
+            const expectedTileId = Math.min(TOTAL_TILES, Math.max(1, Number(currentJobs) + 1));
+
+            const zeroBasedId = rawWorking + 1; // backend가 0-base인 경우
+            const oneBasedId = rawWorking;      // backend가 1-base인 경우
+
+            if (!Number.isFinite(rawWorking)) {
+                workingTileId = expectedTileId;
+            } else if (rawWorking <= 0) {
+                workingTileId = 1;
+            } else {
+                const useZeroBased = Math.abs(zeroBasedId - expectedTileId) <= Math.abs(oneBasedId - expectedTileId);
+                workingTileId = useZeroBased ? zeroBasedId : oneBasedId;
+            }
+        } else {
+            workingTileId = Number(currentJobs) + 1;
+        }
+
+        // completed_jobs가 이미 증가했는데 working_tile 갱신이 늦는 프레임 보정
+        if (overallStep === 1 && tileStep >= 1 && tileStep <= 3) {
+            const expectedByCompleted = Math.min(TOTAL_TILES, Math.max(1, Number(currentJobs) + 1));
+            workingTileId = Math.max(workingTileId, expectedByCompleted);
+        }
+
+        workingTileId = Math.min(TOTAL_TILES, Math.max(1, Math.round(workingTileId)));
         _currentWorkingTileId = workingTileId; // 전역 캐시 업데이트
 
         // Firebase에서 이미 작업이 진행 중이면 isStarted를 자동으로 true로 설정
@@ -1760,6 +1678,7 @@
 
     function confirmDesign() {
         if (!selectedDesign) { alert('패턴을 선택해주세요!'); return; }
+        clearInspectionCache('start_design');
         if (selectedDesign === 3) {
             // 데코타일 선택 시 커스텀 팝업 없이 전부 A(흰색)로 즉시 전송
             const allOnes = 'A,A,A,A,A,A,A,A,A';
@@ -1831,6 +1750,7 @@
     }
 
     function confirmCustomPattern() {
+        clearInspectionCache('start_custom_pattern');
         // A=흰색, B=검정, C=데코
         const patternStr = customValues.join(',');
         closePopup();
@@ -1848,12 +1768,44 @@
 
     function sendManualConfirm() {
         database.ref('robot_status').update({ manual_confirm: true });
+        database.ref('robot_command').set({ action: 'manual_confirm', timestamp: Date.now() });
+    }
+
+    function chooseCementInputMode(phase, mode) {
+        const normalized = String(mode || '').toLowerCase();
+        database.ref('robot_status').update({ stt_mode: normalized });
+
+        if (normalized === 'button') {
+            sendManualConfirm();
+            return;
+        }
+
+        updateCementSttUI(phase, '', 'voice');
     }
 
     function sendCommand(cmd) {
         database.ref('robot_command').set({ action: cmd, timestamp: Date.now() });
         if (cmd === 'start') { isStarted = true; if (!timerInterval) startTimer(); } 
         else if (cmd === 'stop') { pauseTimer(); isEstopped = true; document.getElementById('estop-overlay').style.display = 'flex'; }
+    }
+
+    async function clearInspectionCache(reason = 'manual') {
+        try {
+            await fetch('/api/inspect/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason }),
+                cache: 'no-store',
+            });
+        } catch (err) {
+            console.warn('[INSPECT] clear cache 실패:', err);
+        }
+
+        _lastInspectionData = null;
+
+        if (_inspInitialized) {
+            renderInspectionData({ success: false, frame_id: '-', timestamp_sec: 0, wall: null, tiles: [] });
+        }
     }
 
     function resumeRobot() {
@@ -1894,6 +1846,7 @@
     function pauseTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
 
     function resetSystem() {
+        clearInspectionCache('reset');
         pauseTimer(); elapsedSeconds = 0; isStarted = false; isEstopped = false; prevCompletedJobs = 0; 
         document.getElementById('timer').innerText = '00 : 00 : 00';
         for (let id in activeTimers) clearInterval(activeTimers[id]);
@@ -1923,6 +1876,7 @@
             overall_progress: 0.0, tile_progress: 0.0,
             tile_step: 0, working_tile: 0,
             cement_state: 'idle',
+            stt_mode: '',
         });
         database.ref('robot_command').set({ action: 'reset', timestamp: Date.now() });
     }
@@ -2479,6 +2433,8 @@
     function confirmVoicePattern() {
         if (!voiceLayout) return;
 
+        clearInspectionCache('start_voice_pattern');
+
         // layout 1=흰색(A), 2=검정(B), 3=데코(C)
         const patternStr = voiceLayout.map(v => v === 2 ? 'B' : (v === 3 ? 'C' : 'A')).join(',');
         const designColors = voiceLayout.map(v => v === 2 ? 'B' : (v === 3 ? 'D' : 'W'));  // D=데코
@@ -2513,9 +2469,14 @@
     let _cementCalibTimer = null;
     let _lastSttMicState  = '';
 
-    function updateCementSttUI(phase, micState) {
+    function updateCementSttUI(phase, micState, mode = 'choose') {
         // phase: 'pick' | 'cement'
         const states = ['idle', 'tts_speaking', 'calibrating', 'listening', 'retry'];
+        const normalizedMode = String(mode || 'choose').toLowerCase();
+
+        const modeBox = document.getElementById(`cement-mode-${phase}`);
+        if (modeBox) modeBox.style.display = (normalizedMode === 'choose') ? 'flex' : 'none';
+
         states.forEach(s => {
             const el = document.getElementById(`cement-stt-${phase}-${s}`);
             if (el) el.style.display = 'none';
@@ -2525,6 +2486,13 @@
             const el = document.getElementById(`cement-stt-${phase}-${s}`);
             if (el) el.style.display = 'flex';
         };
+
+        if (normalizedMode !== 'voice') {
+            stopCementCalibAnim();
+            stopCementFFT();
+            show('idle');
+            return;
+        }
 
         // 상태 전환 시에만 캘리브레이션 애니메이션 재시작
         if (micState === 'calibrating' && _lastSttMicState !== 'calibrating') {
@@ -2685,12 +2653,33 @@
             return Math.max(Math.abs(Number(rpy?.[0] ?? 0)), Math.abs(Number(rpy?.[1] ?? 0)));
         }
 
-        inspData.tiles.forEach((tile, idx) => {
-            // name에서 번호 추출
-            let tileId = null;
-            const m = String(tile.name || '').match(/(\d+)$/);
-            if (m) tileId = parseInt(m[1]);
-            if (!tileId || tileId < 1 || tileId > TOTAL_TILES) tileId = idx + 1;
+        const sortedTiles = [...inspData.tiles].sort((a, b) => {
+            const au = Number(a?.center_uv?.[0]);
+            const av = Number(a?.center_uv?.[1]);
+            const bu = Number(b?.center_uv?.[0]);
+            const bv = Number(b?.center_uv?.[1]);
+
+            const aValid = Number.isFinite(au) && Number.isFinite(av);
+            const bValid = Number.isFinite(bu) && Number.isFinite(bv);
+            if (!aValid && !bValid) return 0;
+            if (!aValid) return 1;
+            if (!bValid) return -1;
+
+            const rowDelta = av - bv;
+            if (Math.abs(rowDelta) > 40) return rowDelta;
+            return au - bu;
+        });
+
+        const detectCount = Math.max(1, sortedTiles.length);
+        const endTileId = Math.min(TOTAL_TILES, Math.max(1, Number(_currentWorkingTileId) || 1));
+        const startTileId = Math.max(1, endTileId - detectCount + 1);
+        const targetTileIds = [];
+        for (let tileId = startTileId; tileId <= endTileId; tileId++) {
+            targetTileIds.push(tileId);
+        }
+
+        sortedTiles.forEach((tile, idx) => {
+            const tileId = targetTileIds[idx] ?? Math.min(TOTAL_TILES, idx + 1);
 
             const tileEl = document.getElementById(`tile-${tileId}`);
             if (!tileEl) return;
@@ -2919,14 +2908,14 @@ ${Number.isFinite(dz)?dz.toFixed(1):'-'}mm`;
         const isWall = (obj.name === 'wall');
         const color = isWall ? [1.0, 0.75, 0.1] : [0.13, 0.77, 0.36];
 
-        // ── 크기 계산 (report_page와 동일 방식) ──
+        // ── 크기 계산 ──
         let su, sv;
         if (obj.plane_size_m?.width && obj.plane_size_m?.height) {
             su = Number(obj.plane_size_m.width);
             sv = Number(obj.plane_size_m.height);
-        } else if (Array.isArray(obj.size_uv)) {
-            su = Math.max(0.05, Number(obj.size_uv[0]) / 1000);
-            sv = Math.max(0.05, Number(obj.size_uv[1]) / 1000);
+        } else if (!isWall) {
+            su = 0.060;
+            sv = 0.060;
         } else {
             su = isWall ? 0.30 : 0.09;
             sv = isWall ? 0.22 : 0.09;
@@ -2934,9 +2923,22 @@ ${Number.isFinite(dz)?dz.toFixed(1):'-'}mm`;
 
         // ── centroid (mm → m) ──
         let c;
-        if (Array.isArray(obj.centroid_m))        c = obj.centroid_m.map(Number);
-        else if (Array.isArray(obj.center_point_m)) c = obj.center_point_m.map(Number);
-        else c = (obj.plane_centroid_mm || [0, 0, 0]).map(v => Number(v) / 1000);
+        if (Array.isArray(obj.plane_centroid_mm)) {
+            c = obj.plane_centroid_mm.map(v => Number(v) / 1000);
+        } else if (!isWall && Array.isArray(obj.base_center_mm)) {
+            c = obj.base_center_mm.map(v => Number(v) / 1000);
+        } else if (Array.isArray(obj.centroid_m)) {
+            c = obj.centroid_m.map(Number);
+        } else if (Array.isArray(obj.center_point_m)) {
+            c = obj.center_point_m.map(Number);
+        } else {
+            c = (obj.plane_centroid_mm || [0, 0, 0]).map(v => Number(v) / 1000);
+        }
+
+        // 타일 위치 보정: UI에서 한 칸(타일 높이) 정도 위로 이동
+        if (!isWall) {
+            c[1] -= sv;
+        }
 
         // ── normal + quaternion ──
         const nArr = obj.plane_normal || obj.normal || [0, 0, 1];
@@ -3154,175 +3156,32 @@ ${Number.isFinite(dz)?dz.toFixed(1):'-'}mm`;
         window._globalEs.addEventListener('inspect_updated', () => {
             _fetchAndApplyInspection();
         });
-    }
-
-    // ══════════════════════════════════════════════════
-    // 단차 보고서 모달 로직
-    // ══════════════════════════════════════════════════
-    const rpState = { data: null, wallRef: null, lastSig: null };
-
-    const rpEl = (id) => document.getElementById(id);
-    const rpFmt = (v, d = 2) => Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '-';
-
-    function rpTiltDeg(rpy) {
-        return Math.max(Math.abs(Number(rpy?.[0] ?? 0)), Math.abs(Number(rpy?.[1] ?? 0)));
-    }
-
-    function rpClassify(mm) {
-        const warn = Number(rpEl('rp-warnMm').value || 3.0);
-        const bad = Number(rpEl('rp-badMm').value || 6.0);
-        if (mm >= bad) return { cls: 'rp-bad', text: '불량', color: '#ef4444' };
-        if (mm >= warn) return { cls: 'rp-warn', text: '주의', color: '#f59e0b' };
-        return { cls: 'rp-good', text: '정상', color: '#22c55e' };
-    }
-
-    function rpLoadWallRef(data) {
-        if (!data?.wall) return null;
-        const n = data.wall.normal || data.wall.plane_normal || [0, 0, 1];
-        const cmm = data.wall.plane_centroid_mm || null;
-        if (!Array.isArray(n) || !Array.isArray(cmm)) return null;
-        return { n: n.map(Number), p: cmm.map(Number) };
-    }
-
-    function rpSignedDist(pointMm, wallRef) {
-        if (!wallRef || !Array.isArray(pointMm) || pointMm.length < 3) return NaN;
-        const [nx, ny, nz] = wallRef.n;
-        const [px, py, pz] = wallRef.p;
-        const dx = Number(pointMm[0]) - px, dy = Number(pointMm[1]) - py, dz = Number(pointMm[2]) - pz;
-        const nNorm = Math.hypot(nx, ny, nz) || 1;
-        return (nx * dx + ny * dy + nz * dz) / nNorm;
-    }
-
-    function rpNormalizeTiles(data) {
-        const tiles = Array.isArray(data?.tiles) ? data.tiles : [];
-        rpState.wallRef = rpLoadWallRef(data);
-        return tiles.map((tile, idx) => {
-            const p = Array.isArray(tile.plane_centroid_mm) ? tile.plane_centroid_mm.map(Number) : [NaN, NaN, NaN];
-            
-            let distSafe = 0;
-            if (rpState.wallRef) {
-                const dist = rpSignedDist(p, rpState.wallRef);
-                distSafe = Number.isFinite(dist) ? dist : 0;
+        window._globalEs.addEventListener('inspect_cleared', () => {
+            _lastInspectionData = null;
+            if (_inspInitialized) {
+                renderInspectionData({ success: false, frame_id: '-', timestamp_sec: 0, wall: null, tiles: [] });
             }
-            
-            const rpy = tile.rpy_deg || [0,0,0];
-            const tilt = Math.max(Math.abs(rpy[0]), Math.abs(rpy[1]));
-            const judge = rpClassify(Math.abs(distSafe));
-            
-            return { ...tile, idx: idx + 1, z: p[2], dz: distSafe, dzAbs: Math.abs(distSafe), tilt, judge };
-        }).sort((a, b) => (b.dzAbs || 0) - (a.dzAbs || 0));
+        });
     }
 
-    function rpUpdateSummary(tiles, data) {
-        rpEl('rp-mTiles').textContent = String(tiles.length);
-        rpEl('rp-mBase').textContent = rpState.wallRef ? 'inspection.wall' : '-';
-        rpEl('rp-mMaxDz').textContent = tiles.length ? rpFmt(Math.max(...tiles.map(t => t.dzAbs || 0))) : '-';
-        rpEl('rp-mAvgTilt').textContent = tiles.length
-            ? rpFmt(tiles.reduce((s, t) => s + (t.tilt || 0), 0) / tiles.length)
-            : '-';
-        rpEl('rp-mBad').textContent = String(tiles.filter(t => t.judge.cls === 'rp-bad').length);
-        rpEl('rp-mTime').textContent = data?.timestamp_sec
-            ? new Date(data.timestamp_sec * 1000).toLocaleTimeString() : '-';
-    }
-
-    function rpRenderTable(tiles) {
-        const tbody = rpEl('rp-tileTableBody');
-        tbody.innerHTML = '';
-        if (!tiles.length) {
-            tbody.innerHTML = '<tr><td colspan="8"><div class="rp-emptyHint">타일 데이터가 없습니다.</div></td></tr>';
-            return;
-        }
-        for (const t of tiles) {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${t.name ?? `tile_${t.idx}`}</strong></td>
-                <td>${rpFmt(t.conf_score, 4)}</td>
-                <td class="rp-mono">(${rpFmt(t.center_uv?.[0], 1)}, ${rpFmt(t.center_uv?.[1], 1)})</td>
-                <td class="rp-mono">${rpFmt(t.z, 2)}</td>
-                <td class="rp-mono" style="font-weight:800;color:${t.judge.color};">${t.dz >= 0 ? '+' : ''}${rpFmt(t.dz, 2)}</td>
-                <td class="rp-mono">${rpFmt(t.tilt, 2)}</td>
-                <td class="rp-mono">[${rpFmt(t.rpy_deg?.[0], 2)}, ${rpFmt(t.rpy_deg?.[1], 2)}, ${rpFmt(t.rpy_deg?.[2], 2)}]</td>
-                <td><span class="rp-badge ${t.judge.cls}">${t.judge.text}</span></td>
-            `;
-            tbody.appendChild(tr);
-        }
-    }
-
-    function rpDrawMap(tiles) {
-        const canvas = rpEl('rpMapCanvas');
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width, h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = '#0e152a';
-        ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = 'rgba(148,163,184,0.12)';
-        ctx.lineWidth = 1;
-        for (let x = 40; x < w; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-        for (let y = 40; y < h; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-
-        if (!tiles.length) {
-            ctx.fillStyle = '#94a3b8';
-            ctx.font = '16px sans-serif';
-            ctx.fillText('inspection 데이터를 기다리는 중...', 40, 42);
-            return;
-        }
-
-        const valid = tiles.filter(t => Number.isFinite(Number(t.center_uv?.[0])) && Number.isFinite(Number(t.center_uv?.[1])));
-        if (!valid.length) return;
-
-        const us = valid.map(t => Number(t.center_uv[0]));
-        const vs = valid.map(t => Number(t.center_uv[1]));
-        const minU = Math.min(...us), maxU = Math.max(...us);
-        const minV = Math.min(...vs), maxV = Math.max(...vs);
-        const pad = 70;
-        const sx = u => pad + ((u - minU) / Math.max(1, maxU - minU)) * (w - 2 * pad);
-        const sy = v => pad + ((v - minV) / Math.max(1, maxV - minV)) * (h - 2 * pad);
-
-        for (const t of valid) {
-            const x = sx(Number(t.center_uv[0])), y = sy(Number(t.center_uv[1]));
-            const radius = 14 + Math.min(34, (t.dzAbs || 0) * 2.8);
-            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.fillStyle = t.judge.color + '33'; ctx.fill();
-            ctx.lineWidth = 3; ctx.strokeStyle = t.judge.color; ctx.stroke();
-            ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
-            ctx.fillStyle = '#f8fafc'; ctx.fill();
-            ctx.fillStyle = '#e5e7eb'; ctx.font = 'bold 15px sans-serif';
-            ctx.fillText(String(t.name ?? `tile_${t.idx}`), x + radius + 8, y - 12);
-            ctx.font = '13px sans-serif';
-            ctx.fillText(`벽 기준 ${t.dz >= 0 ? '+' : ''}${rpFmt(t.dz)} mm`, x + radius + 8, y + 6);
-            ctx.fillText(`Tilt ${rpFmt(t.tilt)}°`, x + radius + 8, y + 22);
-        }
-    }
-
-    function rpRender(data) {
-        rpState.data = data;
-        const tiles = rpNormalizeTiles(data);
-        rpUpdateSummary(tiles, data);
-        rpRenderTable(tiles);
-        rpDrawMap(tiles);
-        rpEl('rp-statusLine').textContent =
-            `loaded ${tiles.length} tiles @ ${data?.timestamp_sec ? new Date(data.timestamp_sec * 1000).toLocaleString() : '-'}`;
-    }
-
-    async function rpFetchLatest(force = false) {
-        const url = rpEl('rp-urlInput').value.trim();
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!Array.isArray(data?.tiles)) throw new Error('tiles 필드가 없습니다.');
-        rpRender(data);
-    }
-
+    // ══════════════════════════════════════════════════
+    // 단차 보고서 모달 로직 (최신 /report UI 임베드)
+    // ══════════════════════════════════════════════════
     function openReportModal() {
-        document.getElementById('report-modal').classList.add('show');
-        // 현재 inspection 데이터가 있으면 바로 렌더링
-        if (rpState.data) {
-            rpRender(rpState.data);
-        } else {
-            rpFetchLatest(true).catch(err => {
-                rpEl('rp-statusLine').textContent = `error: ${err.message}`;
-            });
+        const modal = document.getElementById('report-modal');
+        const frame = document.getElementById('report-frame');
+        modal.classList.add('show');
+
+        if (frame) {
+            try {
+                if (frame.contentWindow) {
+                    frame.contentWindow.location.reload();
+                } else {
+                    frame.src = '/report';
+                }
+            } catch (err) {
+                frame.src = `/report?t=${Date.now()}`;
+            }
         }
     }
 
@@ -3330,72 +3189,11 @@ ${Number.isFinite(dz)?dz.toFixed(1):'-'}mm`;
         document.getElementById('report-modal').classList.remove('show');
     }
 
-    // 보고서 모달 버튼 이벤트
-    rpEl('rp-fetchBtn').addEventListener('click', () => {
-        rpFetchLatest(true).catch(err => rpEl('rp-statusLine').textContent = `error: ${err.message}`);
-    });
-
-    rpEl('rp-loadDummyBtn').addEventListener('click', async () => {
-        try {
-            rpEl('rp-statusLine').textContent = 'loading dummy...';
-            await fetch('/api/inspect/dummy', { method: 'POST', cache: 'no-store' });
-            await rpFetchLatest(true);
-        } catch (err) {
-            rpEl('rp-statusLine').textContent = `error: ${err.message}`;
-        }
-    });
-
-    rpEl('rp-warnMm').addEventListener('change', () => { if (rpState.data) rpRender(rpState.data); });
-    rpEl('rp-badMm').addEventListener('change', () => { if (rpState.data) rpRender(rpState.data); });
-
-    rpEl('rp-open3dBtn').addEventListener('click', async () => {
-        if (!rpState.data) return;
-        closeReportModal();
-        const modal = document.getElementById('inspection-modal');
-        modal.style.display = 'flex';
-        if (!_inspInitialized) {
-            await new Promise(resolve => requestAnimationFrame(resolve));
-            await _initInsp3D();
-        }
-        await _fetchAndApplyInspection();
-        if (_lastInspectionData) renderInspectionData(_lastInspectionData);
-    });
-
-    rpEl('rp-force3dBtn').addEventListener('click', async () => {
-        if (!rpState.data) return;
-        closeReportModal();
-        const modal = document.getElementById('inspection-modal');
-        modal.style.display = 'flex';
-        if (!_inspInitialized) {
-            await new Promise(resolve => requestAnimationFrame(resolve));
-            await _initInsp3D();
-        }
-        await _fetchAndApplyInspection();
-        if (_lastInspectionData) renderInspectionData(_lastInspectionData);
-    });
-
-    // 보고서 모달 바깥 클릭 시 닫기
     document.getElementById('report-modal').addEventListener('click', (e) => {
         if (e.target === document.getElementById('report-modal')) closeReportModal();
     });
 
-    // role 변경 시 보고서 버튼 표시 (user/admin 모두 보이게)
-    const _origSetRole = setRole;
-    // 페이지 로드 시 보고서 버튼 표시
     document.getElementById('btn-report').style.display = 'block';
-
-    // SSE로 inspection 업데이트 시 보고서도 자동 갱신 (전역 단일 SSE 사용)
-    if (window._globalEs) {
-        window._globalEs.addEventListener('inspect_updated', async () => {
-            try {
-                await rpFetchLatest(true);
-                // 보고서 모달 열려있으면 갱신
-                if (document.getElementById('report-modal').classList.contains('show') && rpState.data) {
-                    rpRender(rpState.data);
-                }
-            } catch (err) { console.error('report SSE error:', err); }
-        });
-    }
 
 </script>
 </body>

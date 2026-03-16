@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -18,6 +19,27 @@ DATA_DIR.mkdir(exist_ok=True)
 LATEST_PATH = DATA_DIR / "latest.json"
 HISTORY_DIR = DATA_DIR / "history"
 HISTORY_DIR.mkdir(exist_ok=True)
+
+
+def _resolve_static_dir() -> Path | None:
+    candidates = [
+        BASE_DIR / "static",
+        BASE_DIR.parent / "static",
+        BASE_DIR.parents[1] / "src" / "tilemate_web" / "tilemate_web" / "static",
+    ]
+
+    try:
+        from ament_index_python.packages import get_package_share_directory
+
+        candidates.append(Path(get_package_share_directory("tilemate_web")) / "static")
+    except Exception:
+        pass
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_dir():
+            return candidate
+
+    return None
 
 def _resolve_config_dir() -> Path:
     candidates = [
@@ -45,7 +67,47 @@ WALL_JSON_PATH = CONFIG_DIR / "wall.json"
 DUMMY_PATH = CONFIG_DIR / "dummy.json"
 
 
+def _fallback_dummy_payload() -> Dict[str, Any]:
+    return {
+        "success": True,
+        "message": "inspect_dummy_fallback",
+        "timestamp_sec": datetime.now().timestamp(),
+        "tiles": [
+            {
+                "name": "pattern_3",
+                "conf_score": 0.95,
+                "center_uv": [488.0, 411.0],
+                "size_uv": [144.0, 146.0],
+                "rpy_deg": [0.0, 0.0, 1.7],
+                "plane_normal": [0.0, 0.0, 1.0],
+                "plane_d": -381.0,
+                "plane_centroid_mm": [-58.5, 14.5, 380.1],
+                "base_center_mm": [288.8, 271.8, 179.2],
+                "anomaly_score": 0.15,
+            },
+            {
+                "name": "pattern_5",
+                "conf_score": 0.99,
+                "center_uv": [669.0, 419.0],
+                "size_uv": [145.5, 147.4],
+                "rpy_deg": [0.0, 0.0, 1.7],
+                "plane_normal": [0.0, 0.0, 1.0],
+                "plane_d": -381.0,
+                "plane_centroid_mm": [17.2, 18.0, 380.4],
+                "base_center_mm": [364.3, 272.9, 176.5],
+                "anomaly_score": 0.47,
+            },
+        ],
+    }
+
+
 app = FastAPI(title="Wall Tile Inspection Web")
+
+STATIC_DIR = _resolve_static_dir()
+if STATIC_DIR is not None:
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+else:
+    print("[tilemate_web.server] WARNING: static directory not found; /static will be unavailable")
 
 DEFAULT_HOST = os.getenv("TILEMATE_WEB_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.getenv("TILEMATE_WEB_PORT", "8000"))
@@ -82,17 +144,11 @@ async def get_wall_json():
     )
 @app.post("/api/inspect/dummy")
 async def generate_dummy():
-    if not DUMMY_PATH.exists():
-        return JSONResponse(
-            {
-                "success": False,
-                "message": "dummy.json not found",
-            },
-            status_code=404,
-        )
-
-    with open(DUMMY_PATH, "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    if DUMMY_PATH.exists():
+        with open(DUMMY_PATH, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    else:
+        payload = _fallback_dummy_payload()
 
     now = datetime.now()
     ts = now.strftime("%Y%m%d_%H%M%S_%f")
@@ -127,14 +183,59 @@ async def generate_dummy():
         "latest_path": str(LATEST_PATH),
         "history_path": str(history_path),
     }
+
+
+@app.post("/api/inspect/clear")
+async def clear_latest_inspection():
+    removed = False
+    try:
+        if LATEST_PATH.exists():
+            LATEST_PATH.unlink()
+            removed = True
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "success": False,
+                "message": f"failed to clear latest.json: {exc}",
+            },
+            status_code=500,
+        )
+
+    event_data = {
+        "type": "inspect_cleared",
+        "timestamp": datetime.now().strftime("%Y%m%d_%H%M%S_%f"),
+        "payload": {
+            "success": True,
+            "message": "no inspection result yet",
+            "frame_id": "-",
+            "timestamp_sec": 0,
+            "wall": None,
+            "tiles": [],
+        },
+    }
+
+    dead_queues = []
+    for q in subscribers[:]:
+        try:
+            q.put_nowait(event_data)
+        except Exception:
+            dead_queues.append(q)
+
+    for q in dead_queues:
+        if q in subscribers:
+            subscribers.remove(q)
+
+    return {
+        "success": True,
+        "message": "inspection cache cleared",
+        "removed": removed,
+    }
+
+
 @app.get("/api/inspect/latest")
 async def get_latest():
     if LATEST_PATH.exists():
         with open(LATEST_PATH, "r", encoding="utf-8") as f:
-            return JSONResponse(json.load(f))
-
-    if DUMMY_PATH.exists():
-        with open(DUMMY_PATH, "r", encoding="utf-8") as f:
             return JSONResponse(json.load(f))
 
     return JSONResponse(

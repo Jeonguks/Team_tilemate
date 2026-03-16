@@ -1,6 +1,5 @@
 (() => {
   const LATEST_API_URL = '/api/inspect/latest';
-  const DUMMY_API_URL = '/api/inspect/dummy';
 
   const state = {
     data: null,
@@ -431,15 +430,6 @@
     await fetchInspectionUrl(LATEST_API_URL, force);
   }
 
-  async function loadDummyOnce() {
-    const res = await fetch(DUMMY_API_URL, {
-      method: 'POST',
-      cache: 'no-store',
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  }
-
   const helpers = {
     tiltDeg,
     classify,
@@ -521,14 +511,29 @@
     }
   }
 
-  // 초기 데이터 로드 (보고서 모달이 열릴 때까지 미루기)
-  // openModal() 호출 시 자동 fetch됨
+  const reportModal = document.getElementById('report-modal');
+  const embeddedMode = !!reportModal;
+
+  if (!embeddedMode) {
+    (async () => {
+      try {
+        await fetchLatestOnly(true);
+      } catch (err) {
+        console.error(err);
+        if (el('statusLine')) {
+          el('statusLine').textContent = `error: ${err.message}`;
+        }
+      }
+    })();
+  }
 
   // ── 공개 API ──
   window.ReportCore = {
     /** 보고서 모달 열기 + 데이터 fetch/render */
     openModal: async () => {
-      document.getElementById('report-modal').classList.add('show');
+      if (reportModal) {
+        reportModal.classList.add('show');
+      }
       try {
         await fetchFromInput(false);
       } catch (err) {
@@ -537,7 +542,9 @@
     },
     /** 이미 데이터가 있으면 re-render만, 없으면 fetch */
     openModalWithData: async (data) => {
-      document.getElementById('report-modal').classList.add('show');
+      if (reportModal) {
+        reportModal.classList.add('show');
+      }
       if (data) {
         render(data);
       } else {
@@ -545,9 +552,11 @@
       }
     },
     closeModal: () => {
-      document.getElementById('report-modal').classList.remove('show');
+      if (reportModal) {
+        reportModal.classList.remove('show');
+      }
     },
-    isOpen: () => document.getElementById('report-modal').classList.contains('show'),
+    isOpen: () => (reportModal ? reportModal.classList.contains('show') : true),
     refresh: (force = true) => fetchFromInput(force),
     getState: () => state,
   };

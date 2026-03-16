@@ -8,13 +8,20 @@ setup(
     version='0.0.0',
     packages=find_packages(exclude=['test']),
     package_data={
-        package_name: ['index.html', 'report_page.html'],
+        package_name: [
+            'index.html',
+            'report_page.html',
+            'static/css/*.css',
+            'static/js/*.js',
+        ],
     },
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/config', glob('config/*.json')),
+        ('share/' + package_name + '/static/css', glob('tilemate_web/static/css/*.css')),
+        ('share/' + package_name + '/static/js', glob('tilemate_web/static/js/*.js')),
     ],
     install_requires=[
         'setuptools',

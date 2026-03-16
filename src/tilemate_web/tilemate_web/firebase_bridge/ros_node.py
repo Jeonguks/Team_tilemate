@@ -129,6 +129,7 @@ class FirebaseBridgeNode(ActionHandlerMixin, SensorHandlerMixin, CoworkFlowMixin
 
         # Firebase 명령 상태
         self._last_command = "idle"
+        self._last_command_ts = None
         self.cmd_ref.update({"action": "idle"})
         self.get_logger().info(f"Firebase 현재 명령 상태: '{self._last_command}'")
 
@@ -155,15 +156,25 @@ class FirebaseBridgeNode(ActionHandlerMixin, SensorHandlerMixin, CoworkFlowMixin
         while rclpy.ok():
             try:
                 raw = self.cmd_ref.get()
+                cmd_ts = None
                 if isinstance(raw, dict):
                     action = str(raw.get("action", "idle")).strip().lower()
                     cmd = raw
+                    cmd_ts = raw.get("timestamp")
                 else:
                     action = str(raw).strip().lower() if raw else "idle"
                     cmd = {}
 
-                if action and action != self._last_command:
+                should_dispatch = False
+                if action:
+                    if action != self._last_command:
+                        should_dispatch = True
+                    elif cmd_ts is not None and cmd_ts != self._last_command_ts:
+                        should_dispatch = True
+
+                if should_dispatch:
                     self._last_command = action
+                    self._last_command_ts = cmd_ts
                     self._dispatch_command(action, cmd)
 
             except Exception as e:
@@ -226,6 +237,31 @@ class FirebaseBridgeNode(ActionHandlerMixin, SensorHandlerMixin, CoworkFlowMixin
             self._reset_time = time.time()
             self.ref.set(INITIAL_ROBOT_STATUS)
             self.get_logger().info("[RESET] Firebase robot_status 초기화 완료")
+
+        elif action == "manual_confirm":
+            status = {}
+            try:
+                snap = self.ref.get()
+                if isinstance(snap, dict):
+                    status = snap
+            except Exception as e:
+                self.get_logger().warn(f"[CMD] manual_confirm status 조회 실패 (무시): {e}")
+
+            cement_state = str(status.get("cement_state", ""))
+            msg = Bool(); msg.data = True
+
+            if cement_state == "waiting_pick":
+                self._publish_reliable(self._pub_human_take, msg, retries=3)
+                self.get_logger().info("[CMD] manual_confirm -> human_take_confirm 전송")
+            elif cement_state == "waiting_cement":
+                self._publish_reliable(self._pub_cement_done, msg, retries=3)
+                self.get_logger().info("[CMD] manual_confirm -> cement_done 전송")
+            else:
+                self._publish_reliable(self._pub_human_take, msg, retries=1)
+                self._publish_reliable(self._pub_cement_done, msg, retries=1)
+                self.get_logger().info("[CMD] manual_confirm -> fallback 전송")
+
+            self.ref.update({"manual_confirm": True})
 
     # ── 유틸 ─────────────────────────────────────────────
     def _publish_reliable(self, publisher, msg, retries=1, interval=0.05):

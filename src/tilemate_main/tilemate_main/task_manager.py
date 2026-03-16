@@ -13,6 +13,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from action_msgs.msg import GoalStatus
+from dsr_msgs2.srv import MoveStop
 
 from tilemate_msgs.action import ExecuteJob, PickTile, PlaceTile, Cowork, Inspect, Press, PatternInspect
 from tilemate_main.robot_config import RobotConfig
@@ -74,6 +75,11 @@ class TaskManagerNode(Node):
         )
 
         self.pub_robot_cmd = self.create_publisher(String, "/robot/command", 10)
+        self.create_subscription(String, "/robot/command", self._cb_robot_command, 10)
+
+        self.cli_move_stop_primary = self.create_client(MoveStop, "/dsr01/motion/move_stop")
+        self.cli_move_stop_fallback = self.create_client(MoveStop, "/motion/move_stop")
+        self._stop_mode = 1
 
         robot_ns = f"/{RobotConfig.robot_id}"
 
@@ -186,12 +192,46 @@ class TaskManagerNode(Node):
     # helpers
     # --------------------------------------------------
     def _publish_stop(self, repeat: int = 3, interval: float = 0.05):
+        self._force_motion_stop(repeat=3, interval=0.03)
+
         msg = String()
         msg.data = "stop"
         for i in range(repeat):
             self.pub_robot_cmd.publish(msg)
             if i < repeat - 1:
                 time.sleep(interval)
+
+    def _force_motion_stop(self, repeat: int = 2, interval: float = 0.03):
+        clients = [self.cli_move_stop_primary, self.cli_move_stop_fallback]
+
+        for i in range(repeat):
+            try:
+                req = MoveStop.Request()
+                req.stop_mode = int(self._stop_mode)
+
+                called = False
+                for client in clients:
+                    if not client.service_is_ready():
+                        client.wait_for_service(timeout_sec=0.0)
+                    if client.service_is_ready():
+                        client.call_async(req)
+                        called = True
+
+                if not called:
+                    self.get_logger().warn("[STOP] move_stop service not ready on /dsr01/motion/move_stop or /motion/move_stop")
+            except Exception as e:
+                self.get_logger().warn(f"[STOP] move_stop call failed: {e}")
+
+            if i < repeat - 1:
+                time.sleep(interval)
+
+    def _cb_robot_command(self, msg: String):
+        cmd = (msg.data or "").strip().lower()
+        if cmd in ("stop", "stop_soft", "halt"):
+            self.get_logger().warn(f"[STOP] /robot/command received: {cmd}")
+            self.kill_requested = True
+            self._cancel_active_subgoal()
+            self._force_motion_stop(repeat=4, interval=0.02)
 
     def _cancel_active_subgoal(self):
         if self.active_sub_goal is None:
