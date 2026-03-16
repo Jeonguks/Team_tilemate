@@ -290,8 +290,8 @@ class PressActionServer(Node):
         if sign not in (-1, 1):
             sign = 1
 
-        pre_contact_pose = [cx, cy - sign * float(approach_offset_mm), cz, 90.0, 90.0, 90.0]
-        contact_pose = [cx, cy, cz, 90.0, 90.0, 90.0]
+        pre_contact_pose = [cx, cy - sign * float(approach_offset_mm), cz+60.0, 90.0, 90.0, 90.0]
+        contact_pose = [cx, cy, cz+60.0, 90.0, 90.0, 90.0]
 
         return pre_contact_pose, contact_pose
 

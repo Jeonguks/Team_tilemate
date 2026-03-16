@@ -42,6 +42,7 @@ setup(
             'pattern_inspect_action_server = tilemate_main.pattern_inspect_action_server:main',
             'rule_base_node = tilemate_main.rule_base_node:main',
             'anomalib_node = tilemate_main.anomalib_node:main',
+            'interrupt_node = tilemate_main.interrupt_node:main',
         ],
     },
 )
